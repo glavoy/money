@@ -1,7 +1,7 @@
 import 'dart:convert';
 import 'dart:io';
 
-import 'package:file_picker/file_picker.dart';
+import 'package:file_picker/file_picker.dart' as file_picker;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -23,9 +23,9 @@ class _ImportScreenState extends ConsumerState<ImportScreen> {
   void _append(String line) => setState(() => _log.add(line));
 
   Future<void> _pickAndImport() async {
-    final picked = await FilePicker.pickFiles(
+    final picked = await file_picker.FilePicker.pickFiles(
       allowMultiple: true,
-      type: FileType.custom,
+      type: file_picker.FileType.custom,
       allowedExtensions: ['csv'],
     );
     if (picked == null || picked.files.isEmpty) return;
