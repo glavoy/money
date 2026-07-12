@@ -1,0 +1,100 @@
+# Miscellaneous
+*.class
+*.log
+*.pyc
+*.swp
+.DS_Store
+.atom/
+.build/
+.buildlog/
+.history
+.svn/
+.swiftpm/
+migrate_working_dir/
+
+# IntelliJ related
+*.iml
+*.ipr
+*.iws
+.idea/
+
+# The .vscode folder contains launch configuration and tasks you configure in
+# VS Code which you may wish to be included in version control, so this line
+# is commented out by default.
+#.vscode/
+
+# Flutter/Dart/Pub related
+**/doc/api/
+**/ios/Flutter/.last_build_id
+.dart_tool/
+.flutter-plugins-dependencies
+.pub-cache/
+.pub/
+/build/
+/coverage/
+
+# Symbolication related
+app.*.symbols
+
+# Obfuscation related
+app.*.map.json
+
+# Android Studio will place build artifacts here
+/android/app/debug
+/android/app/profile
+/android/app/release
+
+# Flutter platform generated/intermediate files
+**/Flutter/ephemeral/
+**/Pods/
+**/xcuserdata/
+**/DerivedData/
+**/.symlinks/
+**/generated_plugin_registrant.dart
+
+# Local SDK paths and machine-specific config
+local.properties
+android/local.properties
+.packages
+.fvm/
+.vscode/settings.json
+.vscode/launch.json
+.vscode/tasks.json
+.agents/
+.codex/
+
+# Secrets and signing material
+.env
+.env.*
+!.env.example
+!.env.*.example
+*.pem
+*.p8
+*.p12
+*.key
+*.crt
+*.cer
+key.properties
+**/key.properties
+**/*.keystore
+**/*.jks
+
+# Supabase local development state
+supabase/.branches/
+supabase/.temp/
+supabase/.env
+supabase/.env.*
+
+# Local app data, imports, and debug output
+*.db
+*.sqlite
+*.sqlite3
+*.sqlite-shm
+*.sqlite-wal
+*.csv
+*.tsv
+*.xls
+*.xlsx
+*.ods
+*.tmp
+*.bak

@@ -1,0 +1,9 @@
+targets:
+  $default:
+    builders:
+      drift_dev:
+        options:
+          # Store DateTimes as ISO-8601 text so UTC date-only values round-trip
+          # exactly regardless of the device timezone (unix-timestamp storage
+          # reads back in local time, shifting dates in negative-offset zones).
+          store_date_time_values_as_text: true
