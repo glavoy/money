@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
 
 import '../../data/database.dart';
+import '../../features/transactions/transactions_screen.dart';
 import '../../shared/currency.dart';
 import '../../shared/providers.dart';
 import '../../sync/sync_service.dart';
@@ -35,14 +36,33 @@ class _QuickAddScreenState extends ConsumerState<QuickAddScreen> {
 
   DateTime get _dateOnly => DateTime.utc(_date.year, _date.month, _date.day);
 
+  DateTime get _todayOnly {
+    final now = DateTime.now();
+    return DateTime.utc(now.year, now.month, now.day);
+  }
+
+  bool get _isToday => _dateOnly == _todayOnly;
+
   Future<void> _pickDate() async {
     final picked = await showDatePicker(
       context: context,
       initialDate: _date,
       firstDate: DateTime(2000),
-      lastDate: DateTime.now().add(const Duration(days: 1)),
+      lastDate: _todayOnly,
     );
     if (picked != null) setState(() => _date = picked);
+  }
+
+  void _shiftDate(int days) {
+    final next = DateTime.utc(_date.year, _date.month, _date.day + days);
+    final min = DateTime.utc(2000);
+    final max = _todayOnly;
+    if (next.isBefore(min) || next.isAfter(max)) return;
+    setState(() => _date = next);
+  }
+
+  void _goToToday() {
+    setState(() => _date = _todayOnly);
   }
 
   Future<void> _save(List<Account> accounts) async {
@@ -170,30 +190,72 @@ class _QuickAddScreenState extends ConsumerState<QuickAddScreen> {
           ],
         ),
         const SizedBox(height: 12),
-        Row(
-          children: [
-            Expanded(
-              child: TextField(
-                controller: _amountController,
-                keyboardType: const TextInputType.numberWithOptions(
-                  decimal: true,
-                ),
-                style: Theme.of(context).textTheme.headlineMedium,
-                decoration: InputDecoration(
-                  labelText: isTransfer
-                      ? 'Amount sent (${selectedAccount?.currency ?? ''})'
-                      : 'Amount (${selectedAccount?.currency ?? ''})',
-                  border: const OutlineInputBorder(),
-                ),
+        LayoutBuilder(
+          builder: (context, constraints) {
+            final amountField = TextField(
+              controller: _amountController,
+              keyboardType: const TextInputType.numberWithOptions(
+                decimal: true,
               ),
-            ),
-            const SizedBox(width: 8),
-            OutlinedButton.icon(
-              onPressed: _pickDate,
-              icon: const Icon(Icons.calendar_today, size: 18),
-              label: Text(DateFormat('EEE d MMM').format(_date)),
-            ),
-          ],
+              style: Theme.of(context).textTheme.headlineMedium,
+              decoration: InputDecoration(
+                labelText: isTransfer
+                    ? 'Amount sent (${selectedAccount?.currency ?? ''})'
+                    : 'Amount (${selectedAccount?.currency ?? ''})',
+                border: const OutlineInputBorder(),
+              ),
+            );
+            final dateControls = Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                IconButton.filledTonal(
+                  tooltip: 'Previous day',
+                  onPressed: () => _shiftDate(-1),
+                  icon: const Icon(Icons.chevron_left),
+                ),
+                const SizedBox(width: 4),
+                OutlinedButton.icon(
+                  onPressed: _pickDate,
+                  icon: const Icon(Icons.calendar_today, size: 18),
+                  label: Text(DateFormat('EEE d MMM').format(_date)),
+                ),
+                const SizedBox(width: 4),
+                IconButton.filledTonal(
+                  tooltip: 'Next day',
+                  onPressed: _isToday ? null : () => _shiftDate(1),
+                  icon: const Icon(Icons.chevron_right),
+                ),
+                const SizedBox(width: 4),
+                SizedBox(
+                  width: 64,
+                  child: TextButton(
+                    onPressed: _isToday ? null : _goToToday,
+                    style: TextButton.styleFrom(
+                      disabledForegroundColor: Colors.transparent,
+                    ),
+                    child: const Text('Today'),
+                  ),
+                ),
+              ],
+            );
+            if (constraints.maxWidth < 430) {
+              return Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  amountField,
+                  const SizedBox(height: 8),
+                  Align(alignment: Alignment.centerRight, child: dateControls),
+                ],
+              );
+            }
+            return Row(
+              children: [
+                Expanded(child: amountField),
+                const SizedBox(width: 8),
+                dateControls,
+              ],
+            );
+          },
         ),
         const SizedBox(height: 12),
         Text(
@@ -378,14 +440,48 @@ class _DaySummary extends ConsumerWidget {
                       : (categoryById[t.categoryId]?.name ?? 'Uncategorised'),
                 ),
                 subtitle: t.note == null ? null : Text(t.note!),
-                trailing: Text(
-                  formatMoney(
-                    t.amount,
-                    CurrencyX.fromCode(
-                      accountById[t.accountId]?.currency ?? 'UGX',
+                onTap: () => showEditTransactionSheet(context, ref, t),
+                trailing: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(
+                      formatMoney(
+                        t.amount,
+                        CurrencyX.fromCode(
+                          accountById[t.accountId]?.currency ?? 'UGX',
+                        ),
+                      ),
+                      style: Theme.of(context).textTheme.bodyMedium,
                     ),
-                  ),
-                  style: Theme.of(context).textTheme.bodyMedium,
+                    IconButton(
+                      tooltip: 'Edit entry',
+                      icon: const Icon(Icons.edit_outlined),
+                      onPressed: () =>
+                          showEditTransactionSheet(context, ref, t),
+                    ),
+                    IconButton(
+                      tooltip: 'Delete entry',
+                      icon: const Icon(Icons.delete_outline),
+                      onPressed: () async {
+                        final currency = CurrencyX.fromCode(
+                          accountById[t.accountId]?.currency ?? 'UGX',
+                        );
+                        final title = t.kind == TxKind.transfer
+                            ? '${accountById[t.accountId]?.name ?? '?'} -> ${accountById[t.toAccountId]?.name ?? '?'}'
+                            : (categoryById[t.categoryId]?.name ??
+                                  'Uncategorised');
+                        final delete = await confirmDeleteTransaction(
+                          context,
+                          t,
+                          title: title,
+                          currency: currency,
+                        );
+                        if (!delete) return;
+                        await db.softDeleteTransaction(t.id);
+                        ref.read(syncServiceProvider).syncSilently();
+                      },
+                    ),
+                  ],
                 ),
               ),
           ],

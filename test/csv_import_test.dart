@@ -1,6 +1,6 @@
 import 'package:drift/native.dart';
-import 'package:expense_tracker/data/database.dart';
-import 'package:expense_tracker/features/import/csv_import.dart';
+import 'package:money/data/database.dart';
+import 'package:money/features/import/csv_import.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 // Rows in exactly the format tools/import_xlsx.py produces.
@@ -26,24 +26,27 @@ void main() {
   setUp(() => db = AppDatabase(NativeDatabase.memory()));
   tearDown(() => db.close());
 
-  test('imports transactions, skipping malformed and unknown-account rows', () async {
-    final result = await importCsvContent(db, _transactionsCsv);
-    expect(result.kind, 'transactions');
-    expect(result.imported, 4);
-    expect(result.skipped, 2);
+  test(
+    'imports transactions, skipping malformed and unknown-account rows',
+    () async {
+      final result = await importCsvContent(db, _transactionsCsv);
+      expect(result.kind, 'transactions');
+      expect(result.imported, 4);
+      expect(result.skipped, 2);
 
-    final txs = await db.select(db.transactions).get();
-    expect(txs.length, 4);
-    final food = txs.singleWhere((t) => t.id == 'imp-20060101-food');
-    expect(food.amount, 3000);
-    expect(food.date, DateTime.utc(2006, 1, 1));
-    expect(food.kind, TxKind.expense);
-    final car = txs.singleWhere((t) => t.id == 'imp-20060101-car');
-    expect(car.note, 'Tube-12000');
-    final income = txs.singleWhere((t) => t.id == 'imp-inc-200601');
-    expect(income.kind, TxKind.income);
-    expect(income.amount, 3650000);
-  });
+      final txs = await db.select(db.transactions).get();
+      expect(txs.length, 4);
+      final food = txs.singleWhere((t) => t.id == 'imp-20060101-food');
+      expect(food.amount, 3000);
+      expect(food.date, DateTime.utc(2006, 1, 1));
+      expect(food.kind, TxKind.expense);
+      final car = txs.singleWhere((t) => t.id == 'imp-20060101-car');
+      expect(car.note, 'Tube-12000');
+      final income = txs.singleWhere((t) => t.id == 'imp-inc-200601');
+      expect(income.kind, TxKind.income);
+      expect(income.amount, 3650000);
+    },
+  );
 
   test('re-importing is idempotent', () async {
     await importCsvContent(db, _transactionsCsv);

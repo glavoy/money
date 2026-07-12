@@ -1,4 +1,4 @@
-package com.glavoy.expense_tracker
+package com.glavoy.money
 
 import io.flutter.embedding.android.FlutterActivity
 

@@ -1,9 +1,9 @@
 import 'package:drift/drift.dart';
 import 'package:drift/native.dart';
-import 'package:expense_tracker/data/database.dart';
-import 'package:expense_tracker/data/seed.dart';
-import 'package:expense_tracker/features/reports/report_data.dart';
-import 'package:expense_tracker/shared/currency.dart';
+import 'package:money/data/database.dart';
+import 'package:money/data/seed.dart';
+import 'package:money/features/reports/report_data.dart';
+import 'package:money/shared/currency.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
@@ -15,19 +15,26 @@ void main() {
 
   tearDown(() => db.close());
 
-  Future<void> addExpense(String id, DateTime date, double amount,
-      {String category = 'food', String account = 'acc-cash'}) async {
+  Future<void> addExpense(
+    String id,
+    DateTime date,
+    double amount, {
+    String category = 'food',
+    String account = 'acc-cash',
+  }) async {
     final now = DateTime.now().toUtc();
-    await db.upsertTransaction(TransactionsCompanion.insert(
-      id: id,
-      date: date,
-      kind: TxKind.expense,
-      amount: amount,
-      accountId: account,
-      categoryId: Value(seedCategoryId(category, CategoryKind.expense)),
-      createdAt: now,
-      updatedAt: now,
-    ));
+    await db.upsertTransaction(
+      TransactionsCompanion.insert(
+        id: id,
+        date: date,
+        kind: TxKind.expense,
+        amount: amount,
+        accountId: account,
+        categoryId: Value(seedCategoryId(category, CategoryKind.expense)),
+        createdAt: now,
+        updatedAt: now,
+      ),
+    );
   }
 
   test('period ranges and titles', () {
@@ -42,7 +49,10 @@ void main() {
     expect(year.from, DateTime.utc(2026, 1, 1));
     expect(year.to, DateTime.utc(2026, 12, 31));
     expect(reportTitle(ReportPeriod.quarter, anchor), 'Q2 2026');
-    expect(shiftAnchor(ReportPeriod.month, DateTime.utc(2026, 1, 10), -1).month, 12);
+    expect(
+      shiftAnchor(ReportPeriod.month, DateTime.utc(2026, 1, 10), -1).month,
+      12,
+    );
   });
 
   test('monthly report sums categories and buckets by day', () async {
@@ -108,17 +118,19 @@ void main() {
 
   test('transfers do not appear as spending', () async {
     final now = DateTime.now().toUtc();
-    await db.upsertTransaction(TransactionsCompanion.insert(
-      id: 'tr1',
-      date: DateTime.utc(2026, 5, 2),
-      kind: TxKind.transfer,
-      amount: 1000000,
-      accountId: 'acc-cash',
-      toAccountId: const Value('acc-mtn'),
-      toAmount: const Value(1000000.0),
-      createdAt: now,
-      updatedAt: now,
-    ));
+    await db.upsertTransaction(
+      TransactionsCompanion.insert(
+        id: 'tr1',
+        date: DateTime.utc(2026, 5, 2),
+        kind: TxKind.transfer,
+        amount: 1000000,
+        accountId: 'acc-cash',
+        toAccountId: const Value('acc-mtn'),
+        toAmount: const Value(1000000.0),
+        createdAt: now,
+        updatedAt: now,
+      ),
+    );
     final report = await computeReport(
       db: db,
       period: ReportPeriod.month,

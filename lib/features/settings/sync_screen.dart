@@ -136,14 +136,19 @@ class _SyncScreenState extends ConsumerState<SyncScreen> {
           ),
           const SizedBox(height: 8),
           OutlinedButton.icon(
-            onPressed: _busy || !ref.read(syncServiceProvider).isSignedIn ? null : _syncNow,
+            onPressed: _busy || !ref.read(syncServiceProvider).isSignedIn
+                ? null
+                : _syncNow,
             icon: const Icon(Icons.sync),
             label: const Text('Sync now'),
           ),
           if (_status != null)
             Padding(
               padding: const EdgeInsets.only(top: 16),
-              child: Text(_status!, style: Theme.of(context).textTheme.bodyMedium),
+              child: Text(
+                _status!,
+                style: Theme.of(context).textTheme.bodyMedium,
+              ),
             ),
           const SizedBox(height: 16),
           Text(

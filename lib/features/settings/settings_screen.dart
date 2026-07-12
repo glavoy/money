@@ -20,35 +20,45 @@ class SettingsScreen extends ConsumerWidget {
           title: const Text('Categories'),
           subtitle: const Text('Add, rename, or archive categories'),
           onTap: () => Navigator.push(
-              context, MaterialPageRoute(builder: (_) => const CategoriesScreen())),
+            context,
+            MaterialPageRoute(builder: (_) => const CategoriesScreen()),
+          ),
         ),
         ListTile(
           leading: const Icon(Icons.account_balance_wallet_outlined),
           title: const Text('Accounts'),
           subtitle: const Text('Manage accounts and opening balances'),
-          onTap: () => Navigator.push(context,
-              MaterialPageRoute(builder: (_) => const AccountsManageScreen())),
+          onTap: () => Navigator.push(
+            context,
+            MaterialPageRoute(builder: (_) => const AccountsManageScreen()),
+          ),
         ),
         ListTile(
           leading: const Icon(Icons.currency_exchange_outlined),
           title: const Text('Exchange rates'),
           subtitle: const Text('View, fetch, or enter UGX/USD/CAD rates'),
           onTap: () => Navigator.push(
-              context, MaterialPageRoute(builder: (_) => const FxRatesScreen())),
+            context,
+            MaterialPageRoute(builder: (_) => const FxRatesScreen()),
+          ),
         ),
         ListTile(
           leading: const Icon(Icons.sync_outlined),
           title: const Text('Sync'),
           subtitle: const Text('Supabase connection and manual sync'),
           onTap: () => Navigator.push(
-              context, MaterialPageRoute(builder: (_) => const SyncScreen())),
+            context,
+            MaterialPageRoute(builder: (_) => const SyncScreen()),
+          ),
         ),
         ListTile(
           leading: const Icon(Icons.upload_file_outlined),
           title: const Text('Import data'),
           subtitle: const Text('Import CSV files produced by import_xlsx.py'),
           onTap: () => Navigator.push(
-              context, MaterialPageRoute(builder: (_) => const ImportScreen())),
+            context,
+            MaterialPageRoute(builder: (_) => const ImportScreen()),
+          ),
         ),
       ],
     );

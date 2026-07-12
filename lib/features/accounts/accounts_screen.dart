@@ -5,7 +5,9 @@ import 'package:intl/intl.dart';
 import '../../data/database.dart';
 import '../../shared/currency.dart';
 import '../../shared/providers.dart';
-import '../transactions/transactions_screen.dart' show showEditTransactionSheet;
+import '../../sync/sync_service.dart';
+import '../transactions/transactions_screen.dart'
+    show confirmDeleteTransaction, showEditTransactionSheet;
 
 class AccountsScreen extends ConsumerWidget {
   const AccountsScreen({super.key});
@@ -31,15 +33,31 @@ class AccountsScreen extends ConsumerWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text('Total (excl. credit card)',
-                    style: Theme.of(context).textTheme.labelLarge),
+                Text(
+                  'Total (excl. credit card)',
+                  style: Theme.of(context).textTheme.labelLarge,
+                ),
                 const SizedBox(height: 4),
-                Text(formatMoney(totalUgx, Currency.ugx),
-                    style: Theme.of(context).textTheme.headlineSmall),
+                Text(
+                  formatMoney(totalUgx, Currency.ugx),
+                  style: Theme.of(context).textTheme.headlineSmall,
+                ),
                 if (latestRate?.usdUgx != null)
                   Text(
-                    '≈ ${formatMoney(convertWithRate(totalUgx, Currency.ugx, Currency.usd, latestRate) ?? 0, Currency.usd)}'
-                    '${latestRate?.cadUgx != null ? '  ·  ${formatMoney(convertWithRate(totalUgx, Currency.ugx, Currency.cad, latestRate) ?? 0, Currency.cad)}' : ''}',
+                    [
+                      '~ ${formatMoney(convertWithRate(totalUgx, Currency.ugx, Currency.usd, latestRate) ?? 0, Currency.usd)}',
+                      if (latestRate?.cadUgx != null)
+                        formatMoney(
+                          convertWithRate(
+                                totalUgx,
+                                Currency.ugx,
+                                Currency.cad,
+                                latestRate,
+                              ) ??
+                              0,
+                          Currency.cad,
+                        ),
+                    ].join('  |  '),
                     style: Theme.of(context).textTheme.bodyMedium,
                   ),
                 if (latestRate != null)
@@ -68,13 +86,13 @@ class AccountsScreen extends ConsumerWidget {
               subtitle: b.account.currency == 'UGX'
                   ? null
                   : Text(
-                      '≈ ${formatMoney(convertWithRate(b.balance, CurrencyX.fromCode(b.account.currency), Currency.ugx, latestRate) ?? 0, Currency.ugx)}'),
+                      '~ ${formatMoney(convertWithRate(b.balance, CurrencyX.fromCode(b.account.currency), Currency.ugx, latestRate) ?? 0, Currency.ugx)}',
+                    ),
               trailing: Text(
                 formatMoney(b.balance, CurrencyX.fromCode(b.account.currency)),
-                style: Theme.of(context)
-                    .textTheme
-                    .titleMedium
-                    ?.copyWith(fontWeight: FontWeight.w600),
+                style: Theme.of(
+                  context,
+                ).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w600),
               ),
               onTap: () => Navigator.push(
                 context,
@@ -89,7 +107,7 @@ class AccountsScreen extends ConsumerWidget {
   }
 }
 
-/// Ledger for one account — replaces the per-account spreadsheet tabs.
+/// Ledger for one account, replacing the per-account spreadsheet tabs.
 class AccountLedgerScreen extends ConsumerWidget {
   const AccountLedgerScreen({super.key, required this.account});
 
@@ -110,7 +128,6 @@ class AccountLedgerScreen extends ConsumerWidget {
         stream: db.watchTransactions(accountId: account.id, limit: 2000),
         builder: (context, snapshot) {
           final txs = snapshot.data ?? [];
-          // Compute running balance from oldest to newest.
           final asc = txs.reversed.toList();
           var running = account.openingBalance;
           final runningAfter = <String, double>{};
@@ -118,61 +135,98 @@ class AccountLedgerScreen extends ConsumerWidget {
             running += _effect(t, account.id);
             runningAfter[t.id] = running;
           }
+
           return Column(
             children: [
               ListTile(
                 title: const Text('Current balance'),
                 trailing: Text(
                   formatMoney(running, currency),
-                  style: Theme.of(context)
-                      .textTheme
-                      .titleLarge
-                      ?.copyWith(fontWeight: FontWeight.bold),
+                  style: Theme.of(
+                    context,
+                  ).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.bold),
                 ),
               ),
               const Divider(height: 1),
               Expanded(
                 child: txs.isEmpty
-                    ? const Center(child: Text('No transactions on this account'))
+                    ? const Center(
+                        child: Text('No transactions on this account'),
+                      )
                     : ListView.builder(
                         itemCount: txs.length,
                         itemBuilder: (context, i) {
                           final t = txs[i];
                           final effect = _effect(t, account.id);
                           final title = switch (t.kind) {
-                            TxKind.transfer => t.accountId == account.id
-                                ? 'To ${accountById[t.toAccountId]?.name ?? '?'}'
-                                : 'From ${accountById[t.accountId]?.name ?? '?'}',
+                            TxKind.transfer =>
+                              t.accountId == account.id
+                                  ? 'To ${accountById[t.toAccountId]?.name ?? '?'}'
+                                  : 'From ${accountById[t.accountId]?.name ?? '?'}',
                             _ => categoryById[t.categoryId]?.name ?? t.kind,
                           };
+
                           return ListTile(
                             dense: true,
                             title: Text(title),
-                            subtitle: Text([
-                              DateFormat('d MMM yyyy').format(t.date),
-                              if (t.note != null) t.note!,
-                            ].join(' · ')),
-                            trailing: Column(
-                              mainAxisAlignment: MainAxisAlignment.center,
-                              crossAxisAlignment: CrossAxisAlignment.end,
+                            subtitle: Text(
+                              [
+                                DateFormat('d MMM yyyy').format(t.date),
+                                if (t.note != null) t.note!,
+                              ].join(' | '),
+                            ),
+                            trailing: Row(
+                              mainAxisSize: MainAxisSize.min,
                               children: [
-                                Text(
-                                  '${effect >= 0 ? '+' : ''}${formatMoney(effect, currency, withCode: false)}',
-                                  style: TextStyle(
-                                    fontWeight: FontWeight.w600,
-                                    color: effect >= 0
-                                        ? Colors.green
-                                        : Theme.of(context).colorScheme.error,
-                                  ),
+                                Column(
+                                  mainAxisAlignment: MainAxisAlignment.center,
+                                  crossAxisAlignment: CrossAxisAlignment.end,
+                                  children: [
+                                    Text(
+                                      '${effect >= 0 ? '+' : ''}${formatMoney(effect, currency, withCode: false)}',
+                                      style: TextStyle(
+                                        fontWeight: FontWeight.w600,
+                                        color: effect >= 0
+                                            ? Colors.green
+                                            : Theme.of(
+                                                context,
+                                              ).colorScheme.error,
+                                      ),
+                                    ),
+                                    Text(
+                                      formatMoney(
+                                        runningAfter[t.id] ?? 0,
+                                        currency,
+                                        withCode: false,
+                                      ),
+                                      style: Theme.of(
+                                        context,
+                                      ).textTheme.bodySmall,
+                                    ),
+                                  ],
                                 ),
-                                Text(
-                                  formatMoney(runningAfter[t.id] ?? 0, currency,
-                                      withCode: false),
-                                  style: Theme.of(context).textTheme.bodySmall,
+                                IconButton(
+                                  tooltip: 'Delete entry',
+                                  icon: const Icon(Icons.delete_outline),
+                                  onPressed: () async {
+                                    final delete =
+                                        await confirmDeleteTransaction(
+                                          context,
+                                          t,
+                                          title: title,
+                                          currency: currency,
+                                        );
+                                    if (!delete) return;
+                                    await db.softDeleteTransaction(t.id);
+                                    ref
+                                        .read(syncServiceProvider)
+                                        .syncSilently();
+                                  },
                                 ),
                               ],
                             ),
-                            onTap: () => showEditTransactionSheet(context, ref, t),
+                            onTap: () =>
+                                showEditTransactionSheet(context, ref, t),
                           );
                         },
                       ),

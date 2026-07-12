@@ -33,12 +33,22 @@ class _ReportsScreenState extends ConsumerState<ReportsScreen> {
                   Expanded(
                     child: SegmentedButton<ReportPeriod>(
                       segments: const [
-                        ButtonSegment(value: ReportPeriod.month, label: Text('Month')),
-                        ButtonSegment(value: ReportPeriod.quarter, label: Text('Quarter')),
-                        ButtonSegment(value: ReportPeriod.year, label: Text('Year')),
+                        ButtonSegment(
+                          value: ReportPeriod.month,
+                          label: Text('Month'),
+                        ),
+                        ButtonSegment(
+                          value: ReportPeriod.quarter,
+                          label: Text('Quarter'),
+                        ),
+                        ButtonSegment(
+                          value: ReportPeriod.year,
+                          label: Text('Year'),
+                        ),
                       ],
                       selected: {_period},
-                      onSelectionChanged: (s) => setState(() => _period = s.first),
+                      onSelectionChanged: (s) =>
+                          setState(() => _period = s.first),
                     ),
                   ),
                   const SizedBox(width: 8),
@@ -60,15 +70,19 @@ class _ReportsScreenState extends ConsumerState<ReportsScreen> {
                 children: [
                   IconButton(
                     icon: const Icon(Icons.chevron_left),
-                    onPressed: () =>
-                        setState(() => _anchor = shiftAnchor(_period, _anchor, -1)),
+                    onPressed: () => setState(
+                      () => _anchor = shiftAnchor(_period, _anchor, -1),
+                    ),
                   ),
-                  Text(reportTitle(_period, _anchor),
-                      style: Theme.of(context).textTheme.titleLarge),
+                  Text(
+                    reportTitle(_period, _anchor),
+                    style: Theme.of(context).textTheme.titleLarge,
+                  ),
                   IconButton(
                     icon: const Icon(Icons.chevron_right),
-                    onPressed: () =>
-                        setState(() => _anchor = shiftAnchor(_period, _anchor, 1)),
+                    onPressed: () => setState(
+                      () => _anchor = shiftAnchor(_period, _anchor, 1),
+                    ),
                   ),
                 ],
               ),
@@ -81,13 +95,21 @@ class _ReportsScreenState extends ConsumerState<ReportsScreen> {
             // makes edits elsewhere refresh on tab switch.
             key: ValueKey('$_period-$_anchor-$currency'),
             future: computeReport(
-                db: db, period: _period, anchor: _anchor, currency: currency),
+              db: db,
+              period: _period,
+              anchor: _anchor,
+              currency: currency,
+            ),
             builder: (context, snapshot) {
               if (!snapshot.hasData) {
                 return const Center(child: CircularProgressIndicator());
               }
               final data = snapshot.data!;
-              return _ReportBody(data: data, currency: currency, period: _period);
+              return _ReportBody(
+                data: data,
+                currency: currency,
+                period: _period,
+              );
             },
           ),
         ),
@@ -97,7 +119,11 @@ class _ReportsScreenState extends ConsumerState<ReportsScreen> {
 }
 
 class _ReportBody extends StatelessWidget {
-  const _ReportBody({required this.data, required this.currency, required this.period});
+  const _ReportBody({
+    required this.data,
+    required this.currency,
+    required this.period,
+  });
 
   final ReportData data;
   final Currency currency;
@@ -106,8 +132,9 @@ class _ReportBody extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final maxCategory =
-        data.byCategory.isEmpty ? 0.0 : data.byCategory.first.value;
+    final maxCategory = data.byCategory.isEmpty
+        ? 0.0
+        : data.byCategory.first.value;
 
     return ListView(
       padding: const EdgeInsets.all(12),
@@ -133,7 +160,10 @@ class _ReportBody extends StatelessWidget {
             Expanded(
               child: _StatCard(
                 label: 'Net',
-                value: formatMoney(data.incomeTotal - data.expenseTotal, currency),
+                value: formatMoney(
+                  data.incomeTotal - data.expenseTotal,
+                  currency,
+                ),
                 color: data.incomeTotal >= data.expenseTotal
                     ? Colors.green
                     : theme.colorScheme.error,
@@ -151,11 +181,16 @@ class _ReportBody extends StatelessWidget {
           ),
         const SizedBox(height: 16),
         Text(
-          period == ReportPeriod.month ? 'Spending by day' : 'Spending by month',
+          period == ReportPeriod.month
+              ? 'Spending by day'
+              : 'Spending by month',
           style: theme.textTheme.titleMedium,
         ),
         const SizedBox(height: 8),
-        SizedBox(height: 200, child: _BucketChart(data: data, currency: currency)),
+        SizedBox(
+          height: 200,
+          child: _BucketChart(data: data, currency: currency),
+        ),
         const SizedBox(height: 20),
         Text('By category', style: theme.textTheme.titleMedium),
         const SizedBox(height: 8),
@@ -167,9 +202,11 @@ class _ReportBody extends StatelessWidget {
               children: [
                 SizedBox(
                   width: 96,
-                  child: Text(entry.key,
-                      overflow: TextOverflow.ellipsis,
-                      style: theme.textTheme.bodyMedium),
+                  child: Text(
+                    entry.key,
+                    overflow: TextOverflow.ellipsis,
+                    style: theme.textTheme.bodyMedium,
+                  ),
                 ),
                 Expanded(
                   child: ClipRRect(
@@ -177,7 +214,8 @@ class _ReportBody extends StatelessWidget {
                     child: LinearProgressIndicator(
                       value: maxCategory == 0 ? 0 : entry.value / maxCategory,
                       minHeight: 14,
-                      backgroundColor: theme.colorScheme.surfaceContainerHighest,
+                      backgroundColor:
+                          theme.colorScheme.surfaceContainerHighest,
                     ),
                   ),
                 ),
@@ -187,8 +225,9 @@ class _ReportBody extends StatelessWidget {
                   child: Text(
                     formatMoney(entry.value, currency, withCode: false),
                     textAlign: TextAlign.right,
-                    style: theme.textTheme.bodyMedium
-                        ?.copyWith(fontWeight: FontWeight.w600),
+                    style: theme.textTheme.bodyMedium?.copyWith(
+                      fontWeight: FontWeight.w600,
+                    ),
                   ),
                 ),
               ],
@@ -207,12 +246,16 @@ class _ReportBody extends StatelessWidget {
                   TableRow(
                     children: [
                       const SizedBox(),
-                      Text('Spent',
-                          textAlign: TextAlign.right,
-                          style: theme.textTheme.labelLarge),
-                      Text('Income',
-                          textAlign: TextAlign.right,
-                          style: theme.textTheme.labelLarge),
+                      Text(
+                        'Spent',
+                        textAlign: TextAlign.right,
+                        style: theme.textTheme.labelLarge,
+                      ),
+                      Text(
+                        'Income',
+                        textAlign: TextAlign.right,
+                        style: theme.textTheme.labelLarge,
+                      ),
                     ],
                   ),
                   for (final b in data.buckets)
@@ -222,10 +265,14 @@ class _ReportBody extends StatelessWidget {
                           padding: const EdgeInsets.symmetric(vertical: 3),
                           child: Text(b.label),
                         ),
-                        Text(formatMoney(b.expense, currency, withCode: false),
-                            textAlign: TextAlign.right),
-                        Text(formatMoney(b.income, currency, withCode: false),
-                            textAlign: TextAlign.right),
+                        Text(
+                          formatMoney(b.expense, currency, withCode: false),
+                          textAlign: TextAlign.right,
+                        ),
+                        Text(
+                          formatMoney(b.income, currency, withCode: false),
+                          textAlign: TextAlign.right,
+                        ),
                       ],
                     ),
                 ],
@@ -240,7 +287,11 @@ class _ReportBody extends StatelessWidget {
 }
 
 class _StatCard extends StatelessWidget {
-  const _StatCard({required this.label, required this.value, required this.color});
+  const _StatCard({
+    required this.label,
+    required this.value,
+    required this.color,
+  });
 
   final String label;
   final String value;
@@ -260,10 +311,10 @@ class _StatCard extends StatelessWidget {
               fit: BoxFit.scaleDown,
               child: Text(
                 value,
-                style: Theme.of(context)
-                    .textTheme
-                    .titleMedium
-                    ?.copyWith(color: color, fontWeight: FontWeight.w700),
+                style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                  color: color,
+                  fontWeight: FontWeight.w700,
+                ),
               ),
             ),
           ],
@@ -308,12 +359,16 @@ class _BucketChart extends StatelessWidget {
               reservedSize: 24,
               getTitlesWidget: (value, meta) {
                 final i = value.toInt();
-                if (i < 0 || i >= buckets.length) return const SizedBox.shrink();
+                if (i < 0 || i >= buckets.length) {
+                  return const SizedBox.shrink();
+                }
                 if (many && i % 5 != 0) return const SizedBox.shrink();
                 return Padding(
                   padding: const EdgeInsets.only(top: 4),
-                  child: Text(buckets[i].label,
-                      style: theme.textTheme.bodySmall),
+                  child: Text(
+                    buckets[i].label,
+                    style: theme.textTheme.bodySmall,
+                  ),
                 );
               },
             ),

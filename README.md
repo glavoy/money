@@ -1,6 +1,6 @@
-# Expense Tracker
+# Money
 
-A Flutter expense tracker.
+A Flutter money tracker.
 Runs on Android, Windows, and macOS from one codebase. Offline-first (local
 SQLite via drift) with optional Supabase sync between devices.
 

@@ -93,7 +93,8 @@ class FxRates extends Table {
   RealColumn get usdUgx => real().nullable()();
   RealColumn get cadUgx => real().nullable()();
   RealColumn get usdCad => real().nullable()();
-  TextColumn get source => text().withDefault(const Constant(FxSource.manual))();
+  TextColumn get source =>
+      text().withDefault(const Constant(FxSource.manual))();
   DateTimeColumn get createdAt => dateTime()();
   DateTimeColumn get updatedAt => dateTime()();
   BoolColumn get deleted => boolean().withDefault(const Constant(false))();
@@ -103,8 +104,8 @@ class FxRates extends Table {
 
   @override
   List<Set<Column>> get uniqueKeys => [
-        {date}
-      ];
+    {date},
+  ];
 }
 
 /// Simple key/value store for app settings and sync bookkeeping.
@@ -124,7 +125,9 @@ class AccountBalance {
   final double balance;
 }
 
-@DriftDatabase(tables: [Accounts, Categories, Transactions, FxRates, AppSettings])
+@DriftDatabase(
+  tables: [Accounts, Categories, Transactions, FxRates, AppSettings],
+)
 class AppDatabase extends _$AppDatabase {
   AppDatabase(super.e);
 
@@ -135,11 +138,11 @@ class AppDatabase extends _$AppDatabase {
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
-        onCreate: (m) async {
-          await m.createAll();
-          await seedDatabase(this);
-        },
-      );
+    onCreate: (m) async {
+      await m.createAll();
+      await seedDatabase(this);
+    },
+  );
 
   // ---------------------------------------------------------------------
   // Accounts
@@ -148,7 +151,10 @@ class AppDatabase extends _$AppDatabase {
   Stream<List<Account>> watchAccounts({bool includeArchived = false}) {
     final q = select(accounts)
       ..where((a) => a.deleted.equals(false))
-      ..orderBy([(a) => OrderingTerm.asc(a.sortOrder), (a) => OrderingTerm.asc(a.name)]);
+      ..orderBy([
+        (a) => OrderingTerm.asc(a.sortOrder),
+        (a) => OrderingTerm.asc(a.name),
+      ]);
     if (!includeArchived) {
       q.where((a) => a.archived.equals(false));
     }
@@ -187,10 +193,12 @@ class AppDatabase extends _$AppDatabase {
         final account = byId[row.read<String>('account_id')];
         if (account == null) continue;
         if (!includeArchived && account.archived) continue;
-        result.add(AccountBalance(
-          account: account,
-          balance: row.read<double>('balance'),
-        ));
+        result.add(
+          AccountBalance(
+            account: account,
+            balance: row.read<double>('balance'),
+          ),
+        );
       }
       result.sort((a, b) => a.account.sortOrder.compareTo(b.account.sortOrder));
       return result;
@@ -201,10 +209,16 @@ class AppDatabase extends _$AppDatabase {
   // Categories
   // ---------------------------------------------------------------------
 
-  Stream<List<Category>> watchCategories({String? kind, bool includeArchived = false}) {
+  Stream<List<Category>> watchCategories({
+    String? kind,
+    bool includeArchived = false,
+  }) {
     final q = select(categories)
       ..where((c) => c.deleted.equals(false))
-      ..orderBy([(c) => OrderingTerm.asc(c.sortOrder), (c) => OrderingTerm.asc(c.name)]);
+      ..orderBy([
+        (c) => OrderingTerm.asc(c.sortOrder),
+        (c) => OrderingTerm.asc(c.name),
+      ]);
     if (kind != null) {
       q.where((c) => c.kind.equals(kind));
     }
@@ -214,8 +228,34 @@ class AppDatabase extends _$AppDatabase {
     return q.watch();
   }
 
-  Future<List<Category>> getCategories({String? kind, bool includeArchived = false}) =>
-      watchCategories(kind: kind, includeArchived: includeArchived).first;
+  Future<List<Category>> getCategories({
+    String? kind,
+    bool includeArchived = false,
+  }) => watchCategories(kind: kind, includeArchived: includeArchived).first;
+
+  Future<int> countTransactionsForCategory(String categoryId) async {
+    final query = selectOnly(transactions)
+      ..addColumns([transactions.id.count()])
+      ..where(
+        transactions.deleted.equals(false) &
+            transactions.categoryId.equals(categoryId),
+      );
+    return await query
+        .map((row) => row.read(transactions.id.count()) ?? 0)
+        .getSingle();
+  }
+
+  Future<bool> softDeleteCategoryIfUnused(String id) async {
+    final count = await countTransactionsForCategory(id);
+    if (count > 0) return false;
+    await (update(categories)..where((c) => c.id.equals(id))).write(
+      CategoriesCompanion(
+        deleted: const Value(true),
+        updatedAt: Value(DateTime.now().toUtc()),
+      ),
+    );
+    return true;
+  }
 
   // ---------------------------------------------------------------------
   // Transactions
@@ -239,7 +279,9 @@ class AppDatabase extends _$AppDatabase {
     if (from != null) q.where((t) => t.date.isBiggerOrEqualValue(from));
     if (to != null) q.where((t) => t.date.isSmallerOrEqualValue(to));
     if (accountId != null) {
-      q.where((t) => t.accountId.equals(accountId) | t.toAccountId.equals(accountId));
+      q.where(
+        (t) => t.accountId.equals(accountId) | t.toAccountId.equals(accountId),
+      );
     }
     if (categoryId != null) q.where((t) => t.categoryId.equals(categoryId));
     if (kind != null) q.where((t) => t.kind.equals(kind));
@@ -248,10 +290,12 @@ class AppDatabase extends _$AppDatabase {
 
   Future<List<Transaction>> getTransactionsBetween(DateTime from, DateTime to) {
     final q = select(transactions)
-      ..where((t) =>
-          t.deleted.equals(false) &
-          t.date.isBiggerOrEqualValue(from) &
-          t.date.isSmallerOrEqualValue(to))
+      ..where(
+        (t) =>
+            t.deleted.equals(false) &
+            t.date.isBiggerOrEqualValue(from) &
+            t.date.isSmallerOrEqualValue(to),
+      )
       ..orderBy([(t) => OrderingTerm.asc(t.date)]);
     return q.get();
   }
@@ -279,7 +323,9 @@ class AppDatabase extends _$AppDatabase {
   Future<FxRate?> getRateOn(DateTime date) async {
     final day = DateTime.utc(date.year, date.month, date.day);
     final q = select(fxRates)
-      ..where((r) => r.deleted.equals(false) & r.date.isSmallerOrEqualValue(day))
+      ..where(
+        (r) => r.deleted.equals(false) & r.date.isSmallerOrEqualValue(day),
+      )
       ..orderBy([(r) => OrderingTerm.desc(r.date)])
       ..limit(1);
     return q.getSingleOrNull();
@@ -287,10 +333,12 @@ class AppDatabase extends _$AppDatabase {
 
   Future<List<FxRate>> getRatesBetween(DateTime from, DateTime to) {
     final q = select(fxRates)
-      ..where((r) =>
-          r.deleted.equals(false) &
-          r.date.isBiggerOrEqualValue(from) &
-          r.date.isSmallerOrEqualValue(to))
+      ..where(
+        (r) =>
+            r.deleted.equals(false) &
+            r.date.isBiggerOrEqualValue(from) &
+            r.date.isSmallerOrEqualValue(to),
+      )
       ..orderBy([(r) => OrderingTerm.asc(r.date)]);
     return q.get();
   }
@@ -315,19 +363,23 @@ class AppDatabase extends _$AppDatabase {
     required String Function() newId,
   }) async {
     final day = DateTime.utc(date.year, date.month, date.day);
-    final existing = await (select(fxRates)..where((r) => r.date.equals(day))).getSingleOrNull();
+    final existing = await (select(
+      fxRates,
+    )..where((r) => r.date.equals(day))).getSingleOrNull();
     final now = DateTime.now().toUtc();
     if (existing == null) {
-      await into(fxRates).insert(FxRatesCompanion.insert(
-        id: newId(),
-        date: day,
-        usdUgx: Value(usdUgx),
-        cadUgx: Value(cadUgx),
-        usdCad: Value(usdCad),
-        source: Value(source),
-        createdAt: now,
-        updatedAt: now,
-      ));
+      await into(fxRates).insert(
+        FxRatesCompanion.insert(
+          id: newId(),
+          date: day,
+          usdUgx: Value(usdUgx),
+          cadUgx: Value(cadUgx),
+          usdCad: Value(usdCad),
+          source: Value(source),
+          createdAt: now,
+          updatedAt: now,
+        ),
+      );
       return;
     }
     const priority = {FxSource.import: 0, FxSource.api: 1, FxSource.manual: 2};
@@ -349,7 +401,9 @@ class AppDatabase extends _$AppDatabase {
   // ---------------------------------------------------------------------
 
   Future<String?> getSetting(String key) async {
-    final row = await (select(appSettings)..where((s) => s.key.equals(key))).getSingleOrNull();
+    final row = await (select(
+      appSettings,
+    )..where((s) => s.key.equals(key))).getSingleOrNull();
     return row?.value;
   }
 
@@ -363,7 +417,7 @@ class AppDatabase extends _$AppDatabase {
 LazyDatabase _openConnection() {
   return LazyDatabase(() async {
     final dir = await getApplicationSupportDirectory();
-    final file = File(p.join(dir.path, 'expense_tracker.db'));
+    final file = File(p.join(dir.path, 'money.db'));
     return NativeDatabase.createInBackground(file);
   });
 }

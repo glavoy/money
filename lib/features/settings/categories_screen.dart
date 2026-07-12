@@ -39,35 +39,9 @@ class CategoriesScreen extends ConsumerWidget {
               ),
             ),
             for (final c in list)
-              ListTile(
-                title: Text(
-                  c.name,
-                  style: c.archived
-                      ? const TextStyle(decoration: TextDecoration.lineThrough)
-                      : null,
-                ),
-                subtitle: c.archived ? const Text('Archived') : null,
-                trailing: IconButton(
-                  icon: Icon(
-                    c.archived
-                        ? Icons.unarchive_outlined
-                        : Icons.archive_outlined,
-                  ),
-                  tooltip: c.archived ? 'Unarchive' : 'Archive',
-                  onPressed: () async {
-                    final db = ref.read(databaseProvider);
-                    await (db.update(
-                      db.categories,
-                    )..where((t) => t.id.equals(c.id))).write(
-                      CategoriesCompanion(
-                        archived: Value(!c.archived),
-                        updatedAt: Value(DateTime.now().toUtc()),
-                      ),
-                    );
-                    ref.read(syncServiceProvider).syncSilently();
-                  },
-                ),
-                onTap: () => _editCategory(context, ref, c),
+              _CategoryTile(
+                category: c,
+                onEdit: () => _editCategory(context, ref, c),
               ),
           ],
           const SizedBox(height: 80),
@@ -162,5 +136,142 @@ class CategoriesScreen extends ConsumerWidget {
         ),
       ),
     );
+  }
+}
+
+class _CategoryTile extends ConsumerWidget {
+  const _CategoryTile({required this.category, required this.onEdit});
+
+  final Category category;
+  final VoidCallback onEdit;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final db = ref.watch(databaseProvider);
+    return FutureBuilder<int>(
+      future: db.countTransactionsForCategory(category.id),
+      builder: (context, snapshot) {
+        final transactionCount = snapshot.data;
+        final subtitleParts = [
+          if (category.archived) 'Archived',
+          if (transactionCount != null)
+            '$transactionCount ${transactionCount == 1 ? 'transaction' : 'transactions'}',
+        ];
+
+        return ListTile(
+          title: Text(
+            category.name,
+            style: category.archived
+                ? const TextStyle(decoration: TextDecoration.lineThrough)
+                : null,
+          ),
+          subtitle: subtitleParts.isEmpty
+              ? null
+              : Text(subtitleParts.join(' | ')),
+          trailing: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              IconButton(
+                icon: Icon(
+                  category.archived
+                      ? Icons.unarchive_outlined
+                      : Icons.archive_outlined,
+                ),
+                tooltip: category.archived ? 'Unarchive' : 'Archive',
+                onPressed: () => _setArchived(ref, !category.archived),
+              ),
+              IconButton(
+                icon: const Icon(Icons.delete_outline),
+                tooltip: 'Delete category',
+                onPressed: transactionCount == null
+                    ? null
+                    : () =>
+                          _deleteOrOfferArchive(context, ref, transactionCount),
+              ),
+            ],
+          ),
+          onTap: onEdit,
+        );
+      },
+    );
+  }
+
+  Future<void> _setArchived(WidgetRef ref, bool archived) async {
+    final db = ref.read(databaseProvider);
+    await (db.update(
+      db.categories,
+    )..where((t) => t.id.equals(category.id))).write(
+      CategoriesCompanion(
+        archived: Value(archived),
+        updatedAt: Value(DateTime.now().toUtc()),
+      ),
+    );
+    ref.read(syncServiceProvider).syncSilently();
+  }
+
+  Future<void> _deleteOrOfferArchive(
+    BuildContext context,
+    WidgetRef ref,
+    int transactionCount,
+  ) async {
+    final db = ref.read(databaseProvider);
+    if (transactionCount == 0) {
+      final delete =
+          await showDialog<bool>(
+            context: context,
+            builder: (context) => AlertDialog(
+              title: const Text('Delete category?'),
+              content: Text(
+                '"${category.name}" is not used by any transactions. Delete it?',
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.pop(context, false),
+                  child: const Text('Cancel'),
+                ),
+                FilledButton(
+                  onPressed: () => Navigator.pop(context, true),
+                  child: const Text('Delete'),
+                ),
+              ],
+            ),
+          ) ??
+          false;
+      if (!delete) return;
+      final deleted = await db.softDeleteCategoryIfUnused(category.id);
+      if (deleted) {
+        ref.read(syncServiceProvider).syncSilently();
+      }
+      return;
+    }
+
+    final archive =
+        await showDialog<bool>(
+          context: context,
+          builder: (context) => AlertDialog(
+            title: const Text('Category is in use'),
+            content: Text(
+              '"${category.name}" is used by $transactionCount '
+              '${transactionCount == 1 ? 'transaction' : 'transactions'}. '
+              'Archive it instead so history and reports stay intact.',
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(context, false),
+                child: const Text('Cancel'),
+              ),
+              FilledButton(
+                onPressed: category.archived
+                    ? null
+                    : () => Navigator.pop(context, true),
+                child: const Text('Archive'),
+              ),
+            ],
+          ),
+        ) ??
+        false;
+    if (archive) {
+      await _setArchived(ref, true);
+    }
   }
 }

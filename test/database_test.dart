@@ -1,8 +1,8 @@
 import 'package:drift/drift.dart' hide isNull;
 import 'package:drift/native.dart';
-import 'package:expense_tracker/data/database.dart';
-import 'package:expense_tracker/data/seed.dart';
-import 'package:expense_tracker/shared/currency.dart';
+import 'package:money/data/database.dart';
+import 'package:money/data/seed.dart';
+import 'package:money/shared/currency.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 AppDatabase _openTestDb() => AppDatabase(NativeDatabase.memory());
@@ -45,7 +45,10 @@ void main() {
         seedExpenseCategories.length + seedIncomeCategories.length,
       );
       // History account is archived so it stays out of quick-add.
-      expect(accounts.singleWhere((a) => a.id == historyAccountId).archived, true);
+      expect(
+        accounts.singleWhere((a) => a.id == historyAccountId).archived,
+        true,
+      );
     });
   });
 
@@ -56,39 +59,47 @@ void main() {
       final day = DateTime.utc(2026, 7, 1);
 
       // Opening balance on cash.
-      await (db.update(db.accounts)..where((a) => a.id.equals('acc-cash'))).write(
+      await (db.update(
+        db.accounts,
+      )..where((a) => a.id.equals('acc-cash'))).write(
         AccountsCompanion(
           openingBalance: const Value(100000),
           updatedAt: Value(DateTime.now().toUtc()),
         ),
       );
 
-      await db.upsertTransaction(_tx(
-        id: 't1',
-        date: day,
-        kind: TxKind.expense,
-        amount: 30000,
-        accountId: 'acc-cash',
-        categoryId: seedCategoryId('food', CategoryKind.expense),
-      ));
-      await db.upsertTransaction(_tx(
-        id: 't2',
-        date: day,
-        kind: TxKind.income,
-        amount: 50000,
-        accountId: 'acc-cash',
-        categoryId: seedCategoryId('Salary', CategoryKind.income),
-      ));
+      await db.upsertTransaction(
+        _tx(
+          id: 't1',
+          date: day,
+          kind: TxKind.expense,
+          amount: 30000,
+          accountId: 'acc-cash',
+          categoryId: seedCategoryId('food', CategoryKind.expense),
+        ),
+      );
+      await db.upsertTransaction(
+        _tx(
+          id: 't2',
+          date: day,
+          kind: TxKind.income,
+          amount: 50000,
+          accountId: 'acc-cash',
+          categoryId: seedCategoryId('Salary', CategoryKind.income),
+        ),
+      );
       // Currency exchange: $100 -> 360,000 UGX cash.
-      await db.upsertTransaction(_tx(
-        id: 't3',
-        date: day,
-        kind: TxKind.transfer,
-        amount: 100,
-        accountId: 'acc-usd-bank',
-        toAccountId: 'acc-cash',
-        toAmount: 360000,
-      ));
+      await db.upsertTransaction(
+        _tx(
+          id: 't3',
+          date: day,
+          kind: TxKind.transfer,
+          amount: 100,
+          accountId: 'acc-usd-bank',
+          toAccountId: 'acc-cash',
+          toAmount: 360000,
+        ),
+      );
 
       final balances = await db.watchBalances(includeArchived: true).first;
       final byId = {for (final b in balances) b.account.id: b.balance};
@@ -99,14 +110,16 @@ void main() {
     test('soft-deleted transactions do not count', () async {
       final db = _openTestDb();
       addTearDown(db.close);
-      await db.upsertTransaction(_tx(
-        id: 't1',
-        date: DateTime.utc(2026, 7, 1),
-        kind: TxKind.expense,
-        amount: 5000,
-        accountId: 'acc-cash',
-        categoryId: seedCategoryId('food', CategoryKind.expense),
-      ));
+      await db.upsertTransaction(
+        _tx(
+          id: 't1',
+          date: DateTime.utc(2026, 7, 1),
+          kind: TxKind.expense,
+          amount: 5000,
+          accountId: 'acc-cash',
+          categoryId: seedCategoryId('food', CategoryKind.expense),
+        ),
+      );
       await db.softDeleteTransaction('t1');
       final balances = await db.watchBalances(includeArchived: true).first;
       final cash = balances.singleWhere((b) => b.account.id == 'acc-cash');
@@ -114,62 +127,117 @@ void main() {
     });
   });
 
-  group('fx rates', () {
-    test('manual beats api beats import; nearest earlier date is used', () async {
+  group('categories', () {
+    test('unused categories can be soft-deleted', () async {
       final db = _openTestDb();
       addTearDown(db.close);
-      var n = 0;
-      String newId() => 'fx-${n++}';
+      final now = DateTime.now().toUtc();
+      await db
+          .into(db.categories)
+          .insert(
+            CategoriesCompanion.insert(
+              id: 'cat-unused',
+              name: 'Unused',
+              kind: CategoryKind.expense,
+              createdAt: now,
+              updatedAt: now,
+            ),
+          );
 
-      await db.upsertRate(
+      expect(await db.countTransactionsForCategory('cat-unused'), 0);
+      expect(await db.softDeleteCategoryIfUnused('cat-unused'), true);
+
+      final categories = await db.getCategories(includeArchived: true);
+      expect(categories.any((c) => c.id == 'cat-unused'), false);
+    });
+
+    test('used categories cannot be soft-deleted', () async {
+      final db = _openTestDb();
+      addTearDown(db.close);
+      final categoryId = seedCategoryId('food', CategoryKind.expense);
+      await db.upsertTransaction(
+        _tx(
+          id: 't1',
+          date: DateTime.utc(2026, 7, 1),
+          kind: TxKind.expense,
+          amount: 5000,
+          accountId: 'acc-cash',
+          categoryId: categoryId,
+        ),
+      );
+
+      expect(await db.countTransactionsForCategory(categoryId), 1);
+      expect(await db.softDeleteCategoryIfUnused(categoryId), false);
+
+      final categories = await db.getCategories(includeArchived: true);
+      expect(categories.any((c) => c.id == categoryId), true);
+    });
+  });
+
+  group('fx rates', () {
+    test(
+      'manual beats api beats import; nearest earlier date is used',
+      () async {
+        final db = _openTestDb();
+        addTearDown(db.close);
+        var n = 0;
+        String newId() => 'fx-${n++}';
+
+        await db.upsertRate(
           date: DateTime.utc(2026, 7, 1),
           usdUgx: 3600,
           source: FxSource.api,
-          newId: newId);
-      // Import must not overwrite the api row.
-      await db.upsertRate(
+          newId: newId,
+        );
+        // Import must not overwrite the api row.
+        await db.upsertRate(
           date: DateTime.utc(2026, 7, 1),
           usdUgx: 1111,
           source: FxSource.import,
-          newId: newId);
-      var rate = await db.getRateOn(DateTime.utc(2026, 7, 1));
-      expect(rate!.usdUgx, 3600);
+          newId: newId,
+        );
+        var rate = await db.getRateOn(DateTime.utc(2026, 7, 1));
+        expect(rate!.usdUgx, 3600);
 
-      // Manual overwrites api.
-      await db.upsertRate(
+        // Manual overwrites api.
+        await db.upsertRate(
           date: DateTime.utc(2026, 7, 1),
           usdUgx: 3585,
           source: FxSource.manual,
-          newId: newId);
-      rate = await db.getRateOn(DateTime.utc(2026, 7, 1));
-      expect(rate!.usdUgx, 3585);
-      expect(rate.source, FxSource.manual);
+          newId: newId,
+        );
+        rate = await db.getRateOn(DateTime.utc(2026, 7, 1));
+        expect(rate!.usdUgx, 3585);
+        expect(rate.source, FxSource.manual);
 
-      // Nearest earlier date fallback.
-      rate = await db.getRateOn(DateTime.utc(2026, 7, 15));
-      expect(rate!.usdUgx, 3585);
-    });
+        // Nearest earlier date fallback.
+        rate = await db.getRateOn(DateTime.utc(2026, 7, 15));
+        expect(rate!.usdUgx, 3585);
+      },
+    );
   });
 
   group('currency conversion', () {
     FxRate rateRow({double? usdUgx, double? cadUgx}) => FxRate(
-          id: 'r',
-          date: DateTime.utc(2026, 7, 1),
-          usdUgx: usdUgx,
-          cadUgx: cadUgx,
-          usdCad: null,
-          source: FxSource.manual,
-          createdAt: DateTime.utc(2026),
-          updatedAt: DateTime.utc(2026),
-          deleted: false,
-        );
+      id: 'r',
+      date: DateTime.utc(2026, 7, 1),
+      usdUgx: usdUgx,
+      cadUgx: cadUgx,
+      usdCad: null,
+      source: FxSource.manual,
+      createdAt: DateTime.utc(2026),
+      updatedAt: DateTime.utc(2026),
+      deleted: false,
+    );
 
     test('converts through UGX', () {
       final rate = rateRow(usdUgx: 3600, cadUgx: 2600);
       expect(convertWithRate(3600000, Currency.ugx, Currency.usd, rate), 1000);
       expect(convertWithRate(100, Currency.usd, Currency.ugx, rate), 360000);
-      expect(convertWithRate(100, Currency.usd, Currency.cad, rate),
-          closeTo(138.46, 0.01));
+      expect(
+        convertWithRate(100, Currency.usd, Currency.cad, rate),
+        closeTo(138.46, 0.01),
+      );
       expect(convertWithRate(500, Currency.cad, Currency.ugx, rate), 1300000);
     });
 

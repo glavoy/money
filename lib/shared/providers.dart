@@ -20,7 +20,9 @@ final balancesProvider = StreamProvider<List<AccountBalance>>((ref) {
 });
 
 final expenseCategoriesProvider = StreamProvider<List<Category>>((ref) {
-  return ref.watch(databaseProvider).watchCategories(kind: CategoryKind.expense);
+  return ref
+      .watch(databaseProvider)
+      .watchCategories(kind: CategoryKind.expense);
 });
 
 final incomeCategoriesProvider = StreamProvider<List<Category>>((ref) {
@@ -54,7 +56,9 @@ class DisplayCurrencyNotifier extends Notifier<Currency> {
 }
 
 final displayCurrencyProvider =
-    NotifierProvider<DisplayCurrencyNotifier, Currency>(DisplayCurrencyNotifier.new);
+    NotifierProvider<DisplayCurrencyNotifier, Currency>(
+      DisplayCurrencyNotifier.new,
+    );
 
 /// Account preselected on the Quick Add screen; persisted in app settings.
 class LastAccountNotifier extends Notifier<String?> {
@@ -74,5 +78,6 @@ class LastAccountNotifier extends Notifier<String?> {
   }
 }
 
-final lastAccountProvider =
-    NotifierProvider<LastAccountNotifier, String?>(LastAccountNotifier.new);
+final lastAccountProvider = NotifierProvider<LastAccountNotifier, String?>(
+  LastAccountNotifier.new,
+);

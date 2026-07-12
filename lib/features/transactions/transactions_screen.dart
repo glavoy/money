@@ -205,6 +205,32 @@ Future<String?> _pickFromList(
   );
 }
 
+Future<bool> confirmDeleteTransaction(
+  BuildContext context,
+  Transaction tx, {
+  required String title,
+  required Currency currency,
+}) async {
+  return await showDialog<bool>(
+        context: context,
+        builder: (context) => AlertDialog(
+          title: const Text('Delete entry?'),
+          content: Text('$title - ${formatMoney(tx.amount, currency)}'),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context, false),
+              child: const Text('Cancel'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.pop(context, true),
+              child: const Text('Delete'),
+            ),
+          ],
+        ),
+      ) ??
+      false;
+}
+
 class _TransactionTile extends ConsumerWidget {
   const _TransactionTile({
     required this.tx,
@@ -272,16 +298,36 @@ class _TransactionTile extends ConsumerWidget {
         subtitle: subtitleParts.isEmpty
             ? null
             : Text(subtitleParts.join(' · ')),
-        trailing: Text(
-          '${tx.kind == TxKind.expense ? '-' : ''}${formatMoney(tx.amount, currency)}',
-          style: TextStyle(
-            color: switch (tx.kind) {
-              TxKind.income => Colors.green,
-              TxKind.expense => Theme.of(context).colorScheme.error,
-              _ => null,
-            },
-            fontWeight: FontWeight.w600,
-          ),
+        trailing: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(
+              '${tx.kind == TxKind.expense ? '-' : ''}${formatMoney(tx.amount, currency)}',
+              style: TextStyle(
+                color: switch (tx.kind) {
+                  TxKind.income => Colors.green,
+                  TxKind.expense => Theme.of(context).colorScheme.error,
+                  _ => null,
+                },
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+            IconButton(
+              tooltip: 'Delete entry',
+              icon: const Icon(Icons.delete_outline),
+              onPressed: () async {
+                final delete = await confirmDeleteTransaction(
+                  context,
+                  tx,
+                  title: title,
+                  currency: currency,
+                );
+                if (!delete) return;
+                await ref.read(databaseProvider).softDeleteTransaction(tx.id);
+                ref.read(syncServiceProvider).syncSilently();
+              },
+            ),
+          ],
         ),
         onTap: () => showEditTransactionSheet(context, ref, tx),
       ),

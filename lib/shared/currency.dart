@@ -6,16 +6,16 @@ enum Currency { ugx, usd, cad }
 
 extension CurrencyX on Currency {
   String get code => switch (this) {
-        Currency.ugx => 'UGX',
-        Currency.usd => 'USD',
-        Currency.cad => 'CAD',
-      };
+    Currency.ugx => 'UGX',
+    Currency.usd => 'USD',
+    Currency.cad => 'CAD',
+  };
 
   static Currency fromCode(String code) => switch (code.toUpperCase()) {
-        'USD' => Currency.usd,
-        'CAD' => Currency.cad,
-        _ => Currency.ugx,
-      };
+    'USD' => Currency.usd,
+    'CAD' => Currency.cad,
+    _ => Currency.ugx,
+  };
 }
 
 final _ugxFormat = NumberFormat('#,##0', 'en_US');
@@ -31,7 +31,12 @@ String formatMoney(double amount, Currency currency, {bool withCode = true}) {
 /// Converts between UGX/USD/CAD using an FX rate row.
 ///
 /// Returns null when the rate needed for the pair is missing.
-double? convertWithRate(double amount, Currency from, Currency to, FxRate? rate) {
+double? convertWithRate(
+  double amount,
+  Currency from,
+  Currency to,
+  FxRate? rate,
+) {
   if (from == to) return amount;
   if (rate == null) return null;
 
@@ -51,9 +56,13 @@ double? convertWithRate(double amount, Currency from, Currency to, FxRate? rate)
     case Currency.ugx:
       return inUgx;
     case Currency.usd:
-      return rate.usdUgx == null || rate.usdUgx == 0 ? null : inUgx / rate.usdUgx!;
+      return rate.usdUgx == null || rate.usdUgx == 0
+          ? null
+          : inUgx / rate.usdUgx!;
     case Currency.cad:
-      return rate.cadUgx == null || rate.cadUgx == 0 ? null : inUgx / rate.cadUgx!;
+      return rate.cadUgx == null || rate.cadUgx == 0
+          ? null
+          : inUgx / rate.cadUgx!;
   }
 }
 
@@ -61,7 +70,7 @@ double? convertWithRate(double amount, Currency from, Currency to, FxRate? rate)
 /// without hitting the database per row.
 class FxTable {
   FxTable(List<FxRate> rates)
-      : _rates = List.of(rates)..sort((a, b) => a.date.compareTo(b.date));
+    : _rates = List.of(rates)..sort((a, b) => a.date.compareTo(b.date));
 
   final List<FxRate> _rates;
 

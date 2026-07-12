@@ -1,4 +1,4 @@
--- Expense Tracker — Supabase schema
+-- Money - Supabase schema
 -- Run this once in your Supabase project's SQL editor (Dashboard > SQL Editor).
 --
 -- Then create your user: Dashboard > Authentication > Users > Add user

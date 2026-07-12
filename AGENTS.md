@@ -2,7 +2,7 @@
 
 ## Project Structure & Module Organization
 
-This is a Flutter expense tracker for Android, Windows, and macOS. Main Dart code lives in `lib/`. Use `lib/features/<feature>/` for screen-level UI such as `quick_add`, `transactions`, `accounts`, `reports`, `settings`, and `import`. Shared app services belong in `lib/shared/`, sync code in `lib/sync/`, and Drift database code in `lib/data/`. The generated Drift file is `lib/data/database.g.dart`; regenerate it after schema changes. Tests live in `test/` and mirror user flows or data modules, for example `quick_add_flow_test.dart` and `database_test.dart`. Platform folders (`android/`, `windows/`, `macos/`) should only change for platform integration work. Supabase setup SQL is in `supabase/schema.sql`, and spreadsheet import tooling is in `tools/import_xlsx.py`.
+This is a Flutter money tracker for Android, Windows, and macOS. Main Dart code lives in `lib/`. Use `lib/features/<feature>/` for screen-level UI such as `quick_add`, `transactions`, `accounts`, `reports`, `settings`, and `import`. Shared app services belong in `lib/shared/`, sync code in `lib/sync/`, and Drift database code in `lib/data/`. The generated Drift file is `lib/data/database.g.dart`; regenerate it after schema changes. Tests live in `test/` and mirror user flows or data modules, for example `quick_add_flow_test.dart` and `database_test.dart`. Platform folders (`android/`, `windows/`, `macos/`) should only change for platform integration work. Supabase setup SQL is in `supabase/schema.sql`, and spreadsheet import tooling is in `tools/import_xlsx.py`.
 
 ## Build, Test, and Development Commands
 

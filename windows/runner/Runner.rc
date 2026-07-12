@@ -90,12 +90,12 @@ BEGIN
         BLOCK "040904e4"
         BEGIN
             VALUE "CompanyName", "com.glavoy" "\0"
-            VALUE "FileDescription", "expense_tracker" "\0"
+            VALUE "FileDescription", "Money" "\0"
             VALUE "FileVersion", VERSION_AS_STRING "\0"
-            VALUE "InternalName", "expense_tracker" "\0"
+            VALUE "InternalName", "Money" "\0"
             VALUE "LegalCopyright", "Copyright (C) 2026 com.glavoy. All rights reserved." "\0"
-            VALUE "OriginalFilename", "expense_tracker.exe" "\0"
-            VALUE "ProductName", "expense_tracker" "\0"
+            VALUE "OriginalFilename", "Money.exe" "\0"
+            VALUE "ProductName", "Money" "\0"
             VALUE "ProductVersion", VERSION_AS_STRING "\0"
         END
     END

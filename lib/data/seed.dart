@@ -22,7 +22,12 @@ const seedAccounts = [
   SeedAccount('acc-stanbic', 'Stanbic Bank', AccountType.bank, 'UGX'),
   SeedAccount('acc-usd-bank', 'USD Bank', AccountType.bank, 'USD'),
   SeedAccount('acc-mtn', 'MTN Mobile Money', AccountType.mobileMoney, 'UGX'),
-  SeedAccount('acc-mtn-x', 'MTN Mobile Money X', AccountType.mobileMoney, 'UGX'),
+  SeedAccount(
+    'acc-mtn-x',
+    'MTN Mobile Money X',
+    AccountType.mobileMoney,
+    'UGX',
+  ),
   SeedAccount('acc-airtel', 'Airtel Money', AccountType.mobileMoney, 'UGX'),
   SeedAccount('acc-visa', 'Visa', AccountType.creditCard, 'USD'),
   SeedAccount(historyAccountId, 'Imported history', AccountType.cash, 'UGX'),
@@ -72,46 +77,38 @@ String seedCategoryId(String name, String kind) =>
 Future<void> seedDatabase(AppDatabase db) async {
   final now = DateTime.now().toUtc();
   await db.batch((batch) {
-    batch.insertAll(
-      db.accounts,
-      [
-        for (var i = 0; i < seedAccounts.length; i++)
-          AccountsCompanion.insert(
-            id: seedAccounts[i].id,
-            name: seedAccounts[i].name,
-            type: seedAccounts[i].type,
-            currency: seedAccounts[i].currency,
-            sortOrder: Value(i),
-            archived: Value(seedAccounts[i].id == historyAccountId),
-            createdAt: now,
-            updatedAt: now,
-          ),
-      ],
-      mode: InsertMode.insertOrIgnore,
-    );
-    batch.insertAll(
-      db.categories,
-      [
-        for (var i = 0; i < seedExpenseCategories.length; i++)
-          CategoriesCompanion.insert(
-            id: seedCategoryId(seedExpenseCategories[i], CategoryKind.expense),
-            name: seedExpenseCategories[i],
-            kind: CategoryKind.expense,
-            sortOrder: Value(i),
-            createdAt: now,
-            updatedAt: now,
-          ),
-        for (var i = 0; i < seedIncomeCategories.length; i++)
-          CategoriesCompanion.insert(
-            id: seedCategoryId(seedIncomeCategories[i], CategoryKind.income),
-            name: seedIncomeCategories[i],
-            kind: CategoryKind.income,
-            sortOrder: Value(i),
-            createdAt: now,
-            updatedAt: now,
-          ),
-      ],
-      mode: InsertMode.insertOrIgnore,
-    );
+    batch.insertAll(db.accounts, [
+      for (var i = 0; i < seedAccounts.length; i++)
+        AccountsCompanion.insert(
+          id: seedAccounts[i].id,
+          name: seedAccounts[i].name,
+          type: seedAccounts[i].type,
+          currency: seedAccounts[i].currency,
+          sortOrder: Value(i),
+          archived: Value(seedAccounts[i].id == historyAccountId),
+          createdAt: now,
+          updatedAt: now,
+        ),
+    ], mode: InsertMode.insertOrIgnore);
+    batch.insertAll(db.categories, [
+      for (var i = 0; i < seedExpenseCategories.length; i++)
+        CategoriesCompanion.insert(
+          id: seedCategoryId(seedExpenseCategories[i], CategoryKind.expense),
+          name: seedExpenseCategories[i],
+          kind: CategoryKind.expense,
+          sortOrder: Value(i),
+          createdAt: now,
+          updatedAt: now,
+        ),
+      for (var i = 0; i < seedIncomeCategories.length; i++)
+        CategoriesCompanion.insert(
+          id: seedCategoryId(seedIncomeCategories[i], CategoryKind.income),
+          name: seedIncomeCategories[i],
+          kind: CategoryKind.income,
+          sortOrder: Value(i),
+          createdAt: now,
+          updatedAt: now,
+        ),
+    ], mode: InsertMode.insertOrIgnore);
   });
 }

@@ -1,7 +1,7 @@
 import 'package:drift/native.dart';
-import 'package:expense_tracker/data/database.dart';
-import 'package:expense_tracker/main.dart';
-import 'package:expense_tracker/shared/providers.dart';
+import 'package:money/data/database.dart';
+import 'package:money/main.dart';
+import 'package:money/shared/providers.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';

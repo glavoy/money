@@ -38,7 +38,10 @@ class ReportData {
   final bool missingRates;
 }
 
-({DateTime from, DateTime to}) reportRange(ReportPeriod period, DateTime anchor) {
+({DateTime from, DateTime to}) reportRange(
+  ReportPeriod period,
+  DateTime anchor,
+) {
   switch (period) {
     case ReportPeriod.month:
       return (
@@ -71,8 +74,18 @@ DateTime shiftAnchor(ReportPeriod period, DateTime anchor, int delta) {
 }
 
 const _monthNames = [
-  'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
-  'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec',
+  'Jan',
+  'Feb',
+  'Mar',
+  'Apr',
+  'May',
+  'Jun',
+  'Jul',
+  'Aug',
+  'Sep',
+  'Oct',
+  'Nov',
+  'Dec',
 ];
 
 String reportTitle(ReportPeriod period, DateTime anchor) {
@@ -86,7 +99,11 @@ String reportTitle(ReportPeriod period, DateTime anchor) {
   }
 }
 
-List<ReportBucket> _makeBuckets(ReportPeriod period, DateTime from, DateTime to) {
+List<ReportBucket> _makeBuckets(
+  ReportPeriod period,
+  DateTime from,
+  DateTime to,
+) {
   switch (period) {
     case ReportPeriod.month:
       return [
@@ -98,11 +115,13 @@ List<ReportBucket> _makeBuckets(ReportPeriod period, DateTime from, DateTime to)
       final buckets = <ReportBucket>[];
       var m = DateTime.utc(from.year, from.month, 1);
       while (!m.isAfter(to)) {
-        buckets.add(ReportBucket(
-          _monthNames[m.month - 1],
-          m,
-          DateTime.utc(m.year, m.month + 1, 0),
-        ));
+        buckets.add(
+          ReportBucket(
+            _monthNames[m.month - 1],
+            m,
+            DateTime.utc(m.year, m.month + 1, 0),
+          ),
+        );
         m = DateTime.utc(m.year, m.month + 1, 1);
       }
       return buckets;

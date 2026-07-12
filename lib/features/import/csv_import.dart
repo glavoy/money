@@ -47,9 +47,11 @@ Future<ImportResult> _importTransactions(
 ) async {
   final col = {for (var i = 0; i < header.length; i++) header[i]: i};
   final now = DateTime.now().toUtc();
-  final accountIds = {for (final a in await db.getAccounts(includeArchived: true)) a.id};
+  final accountIds = {
+    for (final a in await db.getAccounts(includeArchived: true)) a.id,
+  };
   final categoryIds = {
-    for (final c in await db.getCategories(includeArchived: true)) c.id
+    for (final c in await db.getCategories(includeArchived: true)) c.id,
   };
 
   var imported = 0, skipped = 0;
@@ -86,19 +88,21 @@ Future<ImportResult> _importTransactions(
       skipped++;
       continue;
     }
-    pending.add(TransactionsCompanion.insert(
-      id: id,
-      date: DateTime.utc(date.year, date.month, date.day),
-      kind: kind,
-      amount: amount,
-      accountId: accountId,
-      categoryId: Value(categoryId),
-      toAccountId: Value(_cell(col, row, 'to_account_id')),
-      toAmount: Value(double.tryParse(_cell(col, row, 'to_amount') ?? '')),
-      note: Value(_cell(col, row, 'note')),
-      createdAt: now,
-      updatedAt: now,
-    ));
+    pending.add(
+      TransactionsCompanion.insert(
+        id: id,
+        date: DateTime.utc(date.year, date.month, date.day),
+        kind: kind,
+        amount: amount,
+        accountId: accountId,
+        categoryId: Value(categoryId),
+        toAccountId: Value(_cell(col, row, 'to_account_id')),
+        toAmount: Value(double.tryParse(_cell(col, row, 'to_amount') ?? '')),
+        note: Value(_cell(col, row, 'note')),
+        createdAt: now,
+        updatedAt: now,
+      ),
+    );
     imported++;
     if (pending.length >= 2000) await flush();
   }
@@ -138,16 +142,18 @@ Future<ImportResult> _importFxRates(
       skipped++;
       continue;
     }
-    pending.add(FxRatesCompanion.insert(
-      id: id,
-      date: DateTime.utc(date.year, date.month, date.day),
-      usdUgx: Value(double.tryParse(_cell(col, row, 'usd_ugx') ?? '')),
-      cadUgx: Value(double.tryParse(_cell(col, row, 'cad_ugx') ?? '')),
-      usdCad: Value(double.tryParse(_cell(col, row, 'usd_cad') ?? '')),
-      source: Value(_cell(col, row, 'source') ?? FxSource.import),
-      createdAt: now,
-      updatedAt: now,
-    ));
+    pending.add(
+      FxRatesCompanion.insert(
+        id: id,
+        date: DateTime.utc(date.year, date.month, date.day),
+        usdUgx: Value(double.tryParse(_cell(col, row, 'usd_ugx') ?? '')),
+        cadUgx: Value(double.tryParse(_cell(col, row, 'cad_ugx') ?? '')),
+        usdCad: Value(double.tryParse(_cell(col, row, 'usd_cad') ?? '')),
+        source: Value(_cell(col, row, 'source') ?? FxSource.import),
+        createdAt: now,
+        updatedAt: now,
+      ),
+    );
     imported++;
     if (pending.length >= 2000) await flush();
   }
