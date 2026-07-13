@@ -161,8 +161,15 @@ class AppDatabase extends _$AppDatabase {
     return q.watch();
   }
 
-  Future<List<Account>> getAccounts({bool includeArchived = false}) =>
-      watchAccounts(includeArchived: includeArchived).first;
+  Future<List<Account>> getAccounts({bool includeArchived = false}) {
+    final q = select(accounts)
+      ..where((a) => a.deleted.equals(false))
+      ..orderBy([(a) => OrderingTerm.asc(a.sortOrder), (a) => OrderingTerm.asc(a.name)]);
+    if (!includeArchived) {
+      q.where((a) => a.archived.equals(false));
+    }
+    return q.get();
+  }
 
   /// Watches computed balances for all non-deleted accounts.
   Stream<List<AccountBalance>> watchBalances({bool includeArchived = false}) {
@@ -231,7 +238,18 @@ class AppDatabase extends _$AppDatabase {
   Future<List<Category>> getCategories({
     String? kind,
     bool includeArchived = false,
-  }) => watchCategories(kind: kind, includeArchived: includeArchived).first;
+  }) {
+    final q = select(categories)
+      ..where((c) => c.deleted.equals(false))
+      ..orderBy([(c) => OrderingTerm.asc(c.sortOrder), (c) => OrderingTerm.asc(c.name)]);
+    if (kind != null) {
+      q.where((c) => c.kind.equals(kind));
+    }
+    if (!includeArchived) {
+      q.where((c) => c.archived.equals(false));
+    }
+    return q.get();
+  }
 
   Future<int> countTransactionsForCategory(String categoryId) async {
     final query = selectOnly(transactions)

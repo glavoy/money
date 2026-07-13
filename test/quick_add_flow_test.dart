@@ -34,8 +34,8 @@ void main() {
     await tester.tap(find.widgetWithText(ChoiceChip, 'Cash'));
     await tester.pump();
 
-    // Save.
-    await tester.tap(find.widgetWithText(FilledButton, 'Save'));
+    // Save (pinned bottom bar button; label is dynamic so find by key).
+    await tester.tap(find.byKey(const ValueKey('save-button')));
     await tester.pumpAndSettle();
 
     // The day summary shows the new entry.

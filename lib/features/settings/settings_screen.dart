@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../shared/widgets.dart';
 import '../import/import_screen.dart';
 import 'accounts_manage_screen.dart';
 import 'categories_screen.dart';
@@ -13,54 +14,84 @@ class SettingsScreen extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     return ListView(
+      padding: const EdgeInsets.fromLTRB(16, 4, 16, 16),
       children: [
-        const SizedBox(height: 8),
-        ListTile(
-          leading: const Icon(Icons.category_outlined),
-          title: const Text('Categories'),
-          subtitle: const Text('Add, rename, or archive categories'),
-          onTap: () => Navigator.push(
-            context,
-            MaterialPageRoute(builder: (_) => const CategoriesScreen()),
-          ),
+        const Padding(
+          padding: EdgeInsets.only(left: 4, bottom: 4),
+          child: SectionLabel('Organise'),
         ),
-        ListTile(
-          leading: const Icon(Icons.account_balance_wallet_outlined),
-          title: const Text('Accounts'),
-          subtitle: const Text('Manage accounts and opening balances'),
+        _SettingsTile(
+          icon: Icons.category_outlined,
+          title: 'Categories',
+          subtitle: 'Add, rename, or archive categories',
           onTap: () => Navigator.push(
-            context,
-            MaterialPageRoute(builder: (_) => const AccountsManageScreen()),
-          ),
+              context, MaterialPageRoute(builder: (_) => const CategoriesScreen())),
         ),
-        ListTile(
-          leading: const Icon(Icons.currency_exchange_outlined),
-          title: const Text('Exchange rates'),
-          subtitle: const Text('View, fetch, or enter UGX/USD/CAD rates'),
-          onTap: () => Navigator.push(
-            context,
-            MaterialPageRoute(builder: (_) => const FxRatesScreen()),
-          ),
+        _SettingsTile(
+          icon: Icons.account_balance_wallet_outlined,
+          title: 'Accounts',
+          subtitle: 'Manage accounts and opening balances',
+          onTap: () => Navigator.push(context,
+              MaterialPageRoute(builder: (_) => const AccountsManageScreen())),
         ),
-        ListTile(
-          leading: const Icon(Icons.sync_outlined),
-          title: const Text('Sync'),
-          subtitle: const Text('Supabase connection and manual sync'),
+        _SettingsTile(
+          icon: Icons.currency_exchange_outlined,
+          title: 'Exchange rates',
+          subtitle: 'View, fetch, or enter UGX/USD/CAD rates',
           onTap: () => Navigator.push(
-            context,
-            MaterialPageRoute(builder: (_) => const SyncScreen()),
-          ),
+              context, MaterialPageRoute(builder: (_) => const FxRatesScreen())),
         ),
-        ListTile(
-          leading: const Icon(Icons.upload_file_outlined),
-          title: const Text('Import data'),
-          subtitle: const Text('Import CSV files produced by import_xlsx.py'),
+        const Padding(
+          padding: EdgeInsets.only(left: 4, top: 16, bottom: 4),
+          child: SectionLabel('Data'),
+        ),
+        _SettingsTile(
+          icon: Icons.sync_outlined,
+          title: 'Sync',
+          subtitle: 'Supabase connection and manual sync',
           onTap: () => Navigator.push(
-            context,
-            MaterialPageRoute(builder: (_) => const ImportScreen()),
-          ),
+              context, MaterialPageRoute(builder: (_) => const SyncScreen())),
+        ),
+        _SettingsTile(
+          icon: Icons.upload_file_outlined,
+          title: 'Import data',
+          subtitle: 'Import CSV files produced by import_xlsx.py',
+          onTap: () => Navigator.push(
+              context, MaterialPageRoute(builder: (_) => const ImportScreen())),
         ),
       ],
+    );
+  }
+}
+
+class _SettingsTile extends StatelessWidget {
+  const _SettingsTile({
+    required this.icon,
+    required this.title,
+    required this.subtitle,
+    required this.onTap,
+  });
+
+  final IconData icon;
+  final String title;
+  final String subtitle;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    return Card(
+      child: ListTile(
+        leading: CircleAvatar(
+          backgroundColor: scheme.secondaryContainer,
+          foregroundColor: scheme.onSecondaryContainer,
+          child: Icon(icon, size: 20),
+        ),
+        title: Text(title, style: const TextStyle(fontWeight: FontWeight.w500)),
+        subtitle: Text(subtitle),
+        trailing: const Icon(Icons.chevron_right),
+        onTap: onTap,
+      ),
     );
   }
 }

@@ -4,10 +4,9 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
 
 import '../../data/database.dart';
-import '../../features/transactions/transactions_screen.dart';
 import '../../shared/currency.dart';
 import '../../shared/providers.dart';
-import '../../sync/sync_service.dart';
+import '../../shared/widgets.dart';
 
 class QuickAddScreen extends ConsumerStatefulWidget {
   const QuickAddScreen({super.key});
@@ -36,33 +35,19 @@ class _QuickAddScreenState extends ConsumerState<QuickAddScreen> {
 
   DateTime get _dateOnly => DateTime.utc(_date.year, _date.month, _date.day);
 
-  DateTime get _todayOnly {
+  bool get _isToday {
     final now = DateTime.now();
-    return DateTime.utc(now.year, now.month, now.day);
+    return _date.year == now.year && _date.month == now.month && _date.day == now.day;
   }
-
-  bool get _isToday => _dateOnly == _todayOnly;
 
   Future<void> _pickDate() async {
     final picked = await showDatePicker(
       context: context,
       initialDate: _date,
       firstDate: DateTime(2000),
-      lastDate: _todayOnly,
+      lastDate: DateTime.now().add(const Duration(days: 1)),
     );
     if (picked != null) setState(() => _date = picked);
-  }
-
-  void _shiftDate(int days) {
-    final next = DateTime.utc(_date.year, _date.month, _date.day + days);
-    final min = DateTime.utc(2000);
-    final max = _todayOnly;
-    if (next.isBefore(min) || next.isAfter(max)) return;
-    setState(() => _date = next);
-  }
-
-  void _goToToday() {
-    setState(() => _date = _todayOnly);
   }
 
   Future<void> _save(List<Account> accounts) async {
@@ -91,13 +76,9 @@ class _QuickAddScreenState extends ConsumerState<QuickAddScreen> {
       final from = accounts.firstWhere((a) => a.id == _accountId);
       final to = accounts.firstWhere((a) => a.id == _toAccountId);
       if (from.currency == to.currency) {
-        toAmount =
-            double.tryParse(_toAmountController.text.replaceAll(',', '')) ??
-            amount;
+        toAmount = double.tryParse(_toAmountController.text.replaceAll(',', '')) ?? amount;
       } else {
-        toAmount = double.tryParse(
-          _toAmountController.text.replaceAll(',', ''),
-        );
+        toAmount = double.tryParse(_toAmountController.text.replaceAll(',', ''));
         if (toAmount == null || toAmount <= 0) {
           _toast('Enter the amount received (${to.currency})');
           return;
@@ -106,26 +87,19 @@ class _QuickAddScreenState extends ConsumerState<QuickAddScreen> {
     }
 
     final now = DateTime.now().toUtc();
-    await db.upsertTransaction(
-      TransactionsCompanion.insert(
-        id: uuid.v4(),
-        date: _dateOnly,
-        kind: _kind,
-        amount: amount,
-        accountId: _accountId!,
-        categoryId: Value(isTransfer ? null : _categoryId),
-        toAccountId: Value(isTransfer ? _toAccountId : null),
-        toAmount: Value(toAmount),
-        note: Value(
-          _noteController.text.trim().isEmpty
-              ? null
-              : _noteController.text.trim(),
-        ),
-        createdAt: now,
-        updatedAt: now,
-      ),
-    );
-    ref.read(syncServiceProvider).syncSilently();
+    await db.upsertTransaction(TransactionsCompanion.insert(
+      id: uuid.v4(),
+      date: _dateOnly,
+      kind: _kind,
+      amount: amount,
+      accountId: _accountId!,
+      categoryId: Value(isTransfer ? null : _categoryId),
+      toAccountId: Value(isTransfer ? _toAccountId : null),
+      toAmount: Value(toAmount),
+      note: Value(_noteController.text.trim().isEmpty ? null : _noteController.text.trim()),
+      createdAt: now,
+      updatedAt: now,
+    ));
     ref.read(lastAccountProvider.notifier).set(_accountId!);
     setState(() {
       _amountController.clear();
@@ -139,201 +113,166 @@ class _QuickAddScreenState extends ConsumerState<QuickAddScreen> {
   void _toast(String message) {
     ScaffoldMessenger.of(context)
       ..clearSnackBars()
-      ..showSnackBar(
-        SnackBar(content: Text(message), duration: const Duration(seconds: 1)),
-      );
+      ..showSnackBar(SnackBar(content: Text(message), duration: const Duration(seconds: 1)));
   }
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
     final accounts = ref.watch(accountsProvider).value ?? [];
-    final categories =
-        ref
-            .watch(
-              _kind == TxKind.income
-                  ? incomeCategoriesProvider
-                  : expenseCategoriesProvider,
-            )
+    final categories = ref
+            .watch(_kind == TxKind.income ? incomeCategoriesProvider : expenseCategoriesProvider)
             .value ??
         [];
-    _accountId ??=
-        ref.watch(lastAccountProvider) ??
-        (accounts.isNotEmpty ? accounts.first.id : null);
+    _accountId ??= ref.watch(lastAccountProvider) ?? (accounts.isNotEmpty ? accounts.first.id : null);
 
     final isTransfer = _kind == TxKind.transfer;
     final selectedAccount =
-        accounts.where((a) => a.id == _accountId).firstOrNull ??
-        accounts.firstOrNull;
+        accounts.where((a) => a.id == _accountId).firstOrNull ?? accounts.firstOrNull;
+    final currency = CurrencyX.fromCode(selectedAccount?.currency ?? 'UGX');
 
-    return ListView(
-      padding: const EdgeInsets.all(16),
+    return Column(
       children: [
-        Row(
-          children: [
-            Expanded(
-              child: SegmentedButton<String>(
+        Expanded(
+          child: ListView(
+            padding: const EdgeInsets.fromLTRB(16, 4, 16, 16),
+            children: [
+              SegmentedButton<String>(
                 segments: const [
                   ButtonSegment(value: TxKind.expense, label: Text('Expense')),
                   ButtonSegment(value: TxKind.income, label: Text('Income')),
-                  ButtonSegment(
-                    value: TxKind.transfer,
-                    label: Text('Transfer'),
-                  ),
+                  ButtonSegment(value: TxKind.transfer, label: Text('Transfer')),
                 ],
                 selected: {_kind},
+                showSelectedIcon: false,
                 onSelectionChanged: (s) => setState(() {
                   _kind = s.first;
                   _categoryId = null;
                 }),
               ),
-            ),
-          ],
-        ),
-        const SizedBox(height: 12),
-        LayoutBuilder(
-          builder: (context, constraints) {
-            final amountField = TextField(
-              controller: _amountController,
-              keyboardType: const TextInputType.numberWithOptions(
-                decimal: true,
-              ),
-              style: Theme.of(context).textTheme.headlineMedium,
-              decoration: InputDecoration(
-                labelText: isTransfer
-                    ? 'Amount sent (${selectedAccount?.currency ?? ''})'
-                    : 'Amount (${selectedAccount?.currency ?? ''})',
-                border: const OutlineInputBorder(),
-              ),
-            );
-            final dateControls = Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                IconButton.filledTonal(
-                  tooltip: 'Previous day',
-                  onPressed: () => _shiftDate(-1),
-                  icon: const Icon(Icons.chevron_left),
-                ),
-                const SizedBox(width: 4),
-                OutlinedButton.icon(
-                  onPressed: _pickDate,
-                  icon: const Icon(Icons.calendar_today, size: 18),
-                  label: Text(DateFormat('EEE d MMM').format(_date)),
-                ),
-                const SizedBox(width: 4),
-                IconButton.filledTonal(
-                  tooltip: 'Next day',
-                  onPressed: _isToday ? null : () => _shiftDate(1),
-                  icon: const Icon(Icons.chevron_right),
-                ),
-                const SizedBox(width: 4),
-                SizedBox(
-                  width: 64,
-                  child: TextButton(
-                    onPressed: _isToday ? null : _goToToday,
-                    style: TextButton.styleFrom(
-                      disabledForegroundColor: Colors.transparent,
-                    ),
-                    child: const Text('Today'),
-                  ),
-                ),
-              ],
-            );
-            if (constraints.maxWidth < 430) {
-              return Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
+              const SizedBox(height: 16),
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.center,
                 children: [
-                  amountField,
-                  const SizedBox(height: 8),
-                  Align(alignment: Alignment.centerRight, child: dateControls),
+                  Expanded(
+                    child: TextField(
+                      controller: _amountController,
+                      keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                      style: theme.textTheme.headlineMedium
+                          ?.copyWith(fontWeight: FontWeight.w600),
+                      decoration: InputDecoration(
+                        labelText: isTransfer ? 'Amount sent' : 'Amount',
+                        suffixText: selectedAccount?.currency,
+                        suffixStyle: theme.textTheme.titleMedium
+                            ?.copyWith(color: theme.colorScheme.onSurfaceVariant),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  ActionChip(
+                    avatar: Icon(Icons.calendar_today,
+                        size: 16, color: theme.colorScheme.onSecondaryContainer),
+                    backgroundColor: theme.colorScheme.secondaryContainer,
+                    labelStyle: TextStyle(color: theme.colorScheme.onSecondaryContainer),
+                    label: Text(_isToday ? 'Today' : DateFormat('EEE d MMM').format(_date)),
+                    onPressed: _pickDate,
+                  ),
                 ],
-              );
-            }
-            return Row(
-              children: [
-                Expanded(child: amountField),
-                const SizedBox(width: 8),
-                dateControls,
-              ],
-            );
-          },
-        ),
-        const SizedBox(height: 12),
-        Text(
-          isTransfer ? 'From account' : 'Account',
-          style: Theme.of(context).textTheme.labelLarge,
-        ),
-        const SizedBox(height: 4),
-        Wrap(
-          spacing: 6,
-          runSpacing: -4,
-          children: [
-            for (final a in accounts)
-              ChoiceChip(
-                label: Text(a.name),
-                selected: _accountId == a.id,
-                onSelected: (_) => setState(() => _accountId = a.id),
               ),
-          ],
-        ),
-        if (isTransfer) ...[
-          const SizedBox(height: 12),
-          Text('To account', style: Theme.of(context).textTheme.labelLarge),
-          const SizedBox(height: 4),
-          Wrap(
-            spacing: 6,
-            runSpacing: -4,
-            children: [
-              for (final a in accounts.where((a) => a.id != _accountId))
-                ChoiceChip(
-                  label: Text(a.name),
-                  selected: _toAccountId == a.id,
-                  onSelected: (_) => setState(() => _toAccountId = a.id),
+              const SizedBox(height: 16),
+              SectionLabel(isTransfer ? 'From account' : 'Account'),
+              const SizedBox(height: 6),
+              Wrap(
+                spacing: 6,
+                runSpacing: 0,
+                children: [
+                  for (final a in accounts)
+                    ChoiceChip(
+                      label: Text(a.name),
+                      selected: _accountId == a.id,
+                      onSelected: (_) => setState(() => _accountId = a.id),
+                    ),
+                ],
+              ),
+              if (isTransfer) ...[
+                const SizedBox(height: 12),
+                const SectionLabel('To account'),
+                const SizedBox(height: 6),
+                Wrap(
+                  spacing: 6,
+                  runSpacing: 0,
+                  children: [
+                    for (final a in accounts.where((a) => a.id != _accountId))
+                      ChoiceChip(
+                        label: Text(a.name),
+                        selected: _toAccountId == a.id,
+                        onSelected: (_) => setState(() => _toAccountId = a.id),
+                      ),
+                  ],
                 ),
+                const SizedBox(height: 12),
+                _ToAmountField(
+                  accounts: accounts,
+                  fromId: _accountId,
+                  toId: _toAccountId,
+                  controller: _toAmountController,
+                ),
+              ] else ...[
+                const SizedBox(height: 12),
+                const SectionLabel('Category'),
+                const SizedBox(height: 6),
+                Wrap(
+                  spacing: 6,
+                  runSpacing: 0,
+                  children: [
+                    for (final c in categories)
+                      ChoiceChip(
+                        label: Text(c.name),
+                        selected: _categoryId == c.id,
+                        onSelected: (_) => setState(() => _categoryId = c.id),
+                      ),
+                  ],
+                ),
+              ],
+              const SizedBox(height: 16),
+              TextField(
+                controller: _noteController,
+                decoration: const InputDecoration(labelText: 'Note (optional)'),
+              ),
+              const SizedBox(height: 20),
+              _DaySummary(date: _dateOnly),
             ],
           ),
-          const SizedBox(height: 12),
-          _ToAmountField(
-            accounts: accounts,
-            fromId: _accountId,
-            toId: _toAccountId,
-            controller: _toAmountController,
-          ),
-        ] else ...[
-          const SizedBox(height: 12),
-          Text('Category', style: Theme.of(context).textTheme.labelLarge),
-          const SizedBox(height: 4),
-          Wrap(
-            spacing: 6,
-            runSpacing: -4,
-            children: [
-              for (final c in categories)
-                ChoiceChip(
-                  label: Text(c.name),
-                  selected: _categoryId == c.id,
-                  onSelected: (_) => setState(() => _categoryId = c.id),
-                ),
-            ],
-          ),
-        ],
-        const SizedBox(height: 12),
-        TextField(
-          controller: _noteController,
-          decoration: const InputDecoration(
-            labelText: 'Note (optional)',
-            border: OutlineInputBorder(),
+        ),
+        // Save stays pinned at the bottom, always one thumb-tap away,
+        // regardless of how far the form above is scrolled.
+        Material(
+          color: theme.colorScheme.surfaceContainer,
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(16, 10, 16, 12),
+            child: ListenableBuilder(
+              listenable: _amountController,
+              builder: (context, _) {
+                final amount =
+                    double.tryParse(_amountController.text.replaceAll(',', ''));
+                final label = amount == null || amount <= 0
+                    ? 'Save'
+                    : 'Save ${formatMoney(amount, currency)}';
+                return FilledButton.icon(
+                  key: const ValueKey('save-button'),
+                  onPressed: accounts.isEmpty ? null : () => _save(accounts),
+                  icon: const Icon(Icons.check),
+                  style: FilledButton.styleFrom(
+                    minimumSize: const Size.fromHeight(56),
+                    textStyle:
+                        theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w600),
+                  ),
+                  label: Text(label),
+                );
+              },
+            ),
           ),
         ),
-        const SizedBox(height: 16),
-        FilledButton.icon(
-          onPressed: accounts.isEmpty ? null : () => _save(accounts),
-          icon: const Icon(Icons.check),
-          label: const Padding(
-            padding: EdgeInsets.symmetric(vertical: 12),
-            child: Text('Save'),
-          ),
-        ),
-        const SizedBox(height: 24),
-        _DaySummary(date: _dateOnly),
       ],
     );
   }
@@ -365,12 +304,10 @@ class _ToAmountField extends StatelessWidget {
       keyboardType: const TextInputType.numberWithOptions(decimal: true),
       decoration: InputDecoration(
         labelText: sameCurrency
-            ? 'Amount received (${to.currency}) — leave empty to match'
-            : 'Amount received (${to.currency})',
-        helperText: sameCurrency
-            ? null
-            : 'Currency exchange: enter what actually arrived',
-        border: const OutlineInputBorder(),
+            ? 'Amount received — leave empty to match'
+            : 'Amount received',
+        suffixText: to.currency,
+        helperText: sameCurrency ? null : 'Currency exchange: enter what actually arrived',
       ),
     );
   }
@@ -384,6 +321,7 @@ class _DaySummary extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    final theme = Theme.of(context);
     final db = ref.watch(databaseProvider);
     final accounts = ref.watch(accountsProvider).value ?? [];
     final categories = ref.watch(allCategoriesProvider).value ?? [];
@@ -396,95 +334,56 @@ class _DaySummary extends ConsumerWidget {
         double totalUgx = 0;
         final latestRate = ref.watch(latestRateProvider).value;
         for (final t in txs.where((t) => t.kind == TxKind.expense)) {
-          final currency = CurrencyX.fromCode(
-            accountById[t.accountId]?.currency ?? 'UGX',
-          );
-          totalUgx +=
-              convertWithRate(t.amount, currency, Currency.ugx, latestRate) ??
-              t.amount;
+          final currency =
+              CurrencyX.fromCode(accountById[t.accountId]?.currency ?? 'UGX');
+          totalUgx += convertWithRate(t.amount, currency, Currency.ugx, latestRate) ?? t.amount;
         }
-        return Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        return Card(
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(
-                  DateFormat('EEEE d MMMM').format(date),
-                  style: Theme.of(context).textTheme.titleMedium,
-                ),
-                Text(
-                  'Spent: ${formatMoney(totalUgx, Currency.ugx)}',
-                  style: Theme.of(context).textTheme.titleMedium,
-                ),
-              ],
-            ),
-            const SizedBox(height: 8),
-            if (txs.isEmpty)
-              const Padding(
-                padding: EdgeInsets.symmetric(vertical: 8),
-                child: Text('No entries yet for this day.'),
-              ),
-            for (final t in txs)
-              ListTile(
-                dense: true,
-                contentPadding: EdgeInsets.zero,
-                leading: Icon(switch (t.kind) {
-                  TxKind.income => Icons.arrow_downward,
-                  TxKind.transfer => Icons.swap_horiz,
-                  _ => Icons.arrow_upward,
-                }),
-                title: Text(
-                  t.kind == TxKind.transfer
-                      ? '${accountById[t.accountId]?.name ?? '?'} → ${accountById[t.toAccountId]?.name ?? '?'}'
-                      : (categoryById[t.categoryId]?.name ?? 'Uncategorised'),
-                ),
-                subtitle: t.note == null ? null : Text(t.note!),
-                onTap: () => showEditTransactionSheet(context, ref, t),
-                trailing: Row(
-                  mainAxisSize: MainAxisSize.min,
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
+                    Text(DateFormat('EEEE d MMMM').format(date),
+                        style: theme.textTheme.titleSmall),
                     Text(
-                      formatMoney(
-                        t.amount,
-                        CurrencyX.fromCode(
-                          accountById[t.accountId]?.currency ?? 'UGX',
-                        ),
-                      ),
-                      style: Theme.of(context).textTheme.bodyMedium,
-                    ),
-                    IconButton(
-                      tooltip: 'Edit entry',
-                      icon: const Icon(Icons.edit_outlined),
-                      onPressed: () =>
-                          showEditTransactionSheet(context, ref, t),
-                    ),
-                    IconButton(
-                      tooltip: 'Delete entry',
-                      icon: const Icon(Icons.delete_outline),
-                      onPressed: () async {
-                        final currency = CurrencyX.fromCode(
-                          accountById[t.accountId]?.currency ?? 'UGX',
-                        );
-                        final title = t.kind == TxKind.transfer
-                            ? '${accountById[t.accountId]?.name ?? '?'} -> ${accountById[t.toAccountId]?.name ?? '?'}'
-                            : (categoryById[t.categoryId]?.name ??
-                                  'Uncategorised');
-                        final delete = await confirmDeleteTransaction(
-                          context,
-                          t,
-                          title: title,
-                          currency: currency,
-                        );
-                        if (!delete) return;
-                        await db.softDeleteTransaction(t.id);
-                        ref.read(syncServiceProvider).syncSilently();
-                      },
+                      formatMoney(totalUgx, Currency.ugx),
+                      style: theme.textTheme.titleSmall
+                          ?.copyWith(fontWeight: FontWeight.w700),
                     ),
                   ],
                 ),
-              ),
-          ],
+                if (txs.isEmpty)
+                  Padding(
+                    padding: const EdgeInsets.symmetric(vertical: 12),
+                    child: Text('No entries yet for this day.',
+                        style: theme.textTheme.bodyMedium
+                            ?.copyWith(color: theme.colorScheme.onSurfaceVariant)),
+                  ),
+                for (final t in txs)
+                  ListTile(
+                    dense: true,
+                    contentPadding: EdgeInsets.zero,
+                    leading: KindAvatar(kind: t.kind, small: true),
+                    title: Text(t.kind == TxKind.transfer
+                        ? '${accountById[t.accountId]?.name ?? '?'} → ${accountById[t.toAccountId]?.name ?? '?'}'
+                        : (categoryById[t.categoryId]?.name ?? 'Uncategorised')),
+                    subtitle: t.note == null ? null : Text(t.note!),
+                    trailing: Text(
+                      formatMoney(
+                        t.amount,
+                        CurrencyX.fromCode(accountById[t.accountId]?.currency ?? 'UGX'),
+                      ),
+                      style: theme.textTheme.bodyMedium
+                          ?.copyWith(fontWeight: FontWeight.w600),
+                    ),
+                  ),
+              ],
+            ),
+          ),
         );
       },
     );
