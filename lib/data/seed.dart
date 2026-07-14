@@ -5,6 +5,8 @@ import 'database.dart';
 /// Seed rows use fixed ids so that two devices seeding independently and
 /// then syncing to the same Supabase project agree on the same rows.
 
+final seedTimestamp = DateTime.utc(2000);
+
 class SeedAccount {
   const SeedAccount(this.id, this.name, this.type, this.currency);
   final String id;
@@ -75,7 +77,6 @@ String seedCategoryId(String name, String kind) =>
     'cat-$kind-${name.toLowerCase().replaceAll(' ', '-')}';
 
 Future<void> seedDatabase(AppDatabase db) async {
-  final now = DateTime.now().toUtc();
   await db.batch((batch) {
     batch.insertAll(db.accounts, [
       for (var i = 0; i < seedAccounts.length; i++)
@@ -86,8 +87,8 @@ Future<void> seedDatabase(AppDatabase db) async {
           currency: seedAccounts[i].currency,
           sortOrder: Value(i),
           archived: Value(seedAccounts[i].id == historyAccountId),
-          createdAt: now,
-          updatedAt: now,
+          createdAt: seedTimestamp,
+          updatedAt: seedTimestamp,
         ),
     ], mode: InsertMode.insertOrIgnore);
     batch.insertAll(db.categories, [
@@ -97,8 +98,8 @@ Future<void> seedDatabase(AppDatabase db) async {
           name: seedExpenseCategories[i],
           kind: CategoryKind.expense,
           sortOrder: Value(i),
-          createdAt: now,
-          updatedAt: now,
+          createdAt: seedTimestamp,
+          updatedAt: seedTimestamp,
         ),
       for (var i = 0; i < seedIncomeCategories.length; i++)
         CategoriesCompanion.insert(
@@ -106,8 +107,8 @@ Future<void> seedDatabase(AppDatabase db) async {
           name: seedIncomeCategories[i],
           kind: CategoryKind.income,
           sortOrder: Value(i),
-          createdAt: now,
-          updatedAt: now,
+          createdAt: seedTimestamp,
+          updatedAt: seedTimestamp,
         ),
     ], mode: InsertMode.insertOrIgnore);
   });

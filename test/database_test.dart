@@ -3,6 +3,7 @@ import 'package:drift/native.dart';
 import 'package:money/data/database.dart';
 import 'package:money/data/seed.dart';
 import 'package:money/shared/currency.dart';
+import 'package:money/sync/sync_service.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 AppDatabase _openTestDb() => AppDatabase(NativeDatabase.memory());
@@ -49,7 +50,35 @@ void main() {
         accounts.singleWhere((a) => a.id == historyAccountId).archived,
         true,
       );
+      expect(accounts.every((a) => a.createdAt == seedTimestamp), true);
+      expect(accounts.every((a) => a.updatedAt == seedTimestamp), true);
     });
+
+    test(
+      'identifies only untouched seed accounts as safe to replace',
+      () async {
+        final db = _openTestDb();
+        addTearDown(db.close);
+
+        final accounts = await db.getAccounts(includeArchived: true);
+        final cash = accounts.singleWhere((a) => a.id == 'acc-cash');
+
+        expect(isUntouchedSeedAccount(cash), true);
+        expect(
+          isUntouchedSeedAccount(cash.copyWith(openingBalance: 100)),
+          false,
+        );
+        expect(
+          isUntouchedSeedAccount(
+            cash.copyWith(
+              updatedAt: seedTimestamp.add(const Duration(seconds: 1)),
+            ),
+          ),
+          false,
+        );
+        expect(isUntouchedSeedAccount(cash.copyWith(name: 'Wallet')), false);
+      },
+    );
   });
 
   group('balances', () {

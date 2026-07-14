@@ -13,7 +13,7 @@ import 'sync/sync_service.dart';
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
   final db = AppDatabase.open();
-  await initSupabaseIfConfigured(db);
+  await initSupabaseIfConfigured();
   runApp(
     ProviderScope(
       overrides: [databaseProvider.overrideWithValue(db)],

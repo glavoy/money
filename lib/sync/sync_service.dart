@@ -6,38 +6,34 @@ import 'package:flutter_riverpod/flutter_riverpod.dart'
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../data/database.dart';
+import '../data/seed.dart';
 import '../shared/providers.dart';
+import 'sync_config.dart';
 
 /// Settings keys used for sync configuration.
 class SyncKeys {
-  static const url = 'supabase_url';
-  static const anonKey = 'supabase_anon_key';
   static const lastSyncPrefix = 'last_sync_'; // + table name
 }
 
 bool _supabaseInitialized = false;
 
 /// Called from main(); initializes Supabase when the user has configured it.
-Future<void> initSupabaseIfConfigured(AppDatabase db) async {
+Future<void> initSupabaseIfConfigured() async {
   try {
-    final url = await db.getSetting(SyncKeys.url);
-    final anonKey = await db.getSetting(SyncKeys.anonKey);
-    if (url != null &&
-        url.isNotEmpty &&
-        anonKey != null &&
-        anonKey.isNotEmpty) {
-      await Supabase.initialize(url: url, publishableKey: anonKey);
-      _supabaseInitialized = true;
-    }
+    await initSupabaseNow();
   } catch (e) {
     debugPrint('Supabase init failed: $e');
   }
 }
 
-/// Initializes Supabase after the user saves settings (first configuration).
-Future<void> initSupabaseNow(String url, String anonKey) async {
+/// Initializes Supabase from the local config/sync_config.json asset.
+Future<void> initSupabaseNow() async {
   if (_supabaseInitialized) return;
-  await Supabase.initialize(url: url, publishableKey: anonKey);
+  final config = await SyncConfig.load();
+  await Supabase.initialize(
+    url: config.supabaseUrl,
+    publishableKey: config.supabasePublishableKey,
+  );
   _supabaseInitialized = true;
 }
 
@@ -193,7 +189,9 @@ final _tables = <_TableSync>[
       final local = await (db.select(
         db.accounts,
       )..where((t) => t.id.equals(row['id'] as String))).getSingleOrNull();
-      if (local != null && !remoteUpdated.isAfter(local.updatedAt)) {
+      if (local != null &&
+          !remoteUpdated.isAfter(local.updatedAt) &&
+          !isUntouchedSeedAccount(local)) {
         return false;
       }
       await db
@@ -372,3 +370,29 @@ final _tables = <_TableSync>[
     },
   ),
 ];
+
+@visibleForTesting
+bool isUntouchedSeedAccount(Account account) {
+  SeedAccount? seed;
+  var seedIndex = -1;
+  for (var i = 0; i < seedAccounts.length; i++) {
+    if (seedAccounts[i].id == account.id) {
+      seed = seedAccounts[i];
+      seedIndex = i;
+      break;
+    }
+  }
+  if (seed == null) {
+    return false;
+  }
+
+  return account.name == seed.name &&
+      account.type == seed.type &&
+      account.currency == seed.currency &&
+      account.openingBalance == 0 &&
+      account.openingDate == null &&
+      account.archived == (seed.id == historyAccountId) &&
+      account.sortOrder == seedIndex &&
+      !account.deleted &&
+      account.createdAt.isAtSameMomentAs(account.updatedAt);
+}

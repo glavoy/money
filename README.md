@@ -38,9 +38,19 @@ For development: `flutter run -d windows` (or an Android device).
 2. Dashboard → SQL Editor → run the contents of `supabase/schema.sql`.
 3. Dashboard → Authentication → Users → **Add user** (your email + a password,
    with "Auto confirm user" enabled).
-4. In the app on each device: **Settings → Sync** → enter the project URL and
-   the publishable/anon key (Dashboard → Settings → API keys), sign in with the
-   user from step 3, then **Sync now**.
+4. Copy `config/sync_config.example.json` to `config/sync_config.json`, then
+   fill in the project URL and publishable/anon key from Dashboard → Settings →
+   API keys. `config/sync_config.json` is gitignored.
+5. Run the app normally:
+
+```sh
+flutter run -d windows
+# or
+flutter run -d android
+```
+
+6. In the app on each device: **Settings → Sync** → sign in with the user from
+   step 3, then **Sync now**.
 
 Sync also runs automatically in the background each time the app starts.
 Conflicts resolve as last-write-wins per row; deletes are soft and propagate.

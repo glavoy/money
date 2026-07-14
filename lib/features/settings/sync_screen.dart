@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
-import '../../shared/providers.dart';
+import '../../sync/sync_config.dart';
 import '../../sync/sync_service.dart';
 
 class SyncScreen extends ConsumerStatefulWidget {
@@ -13,31 +13,14 @@ class SyncScreen extends ConsumerStatefulWidget {
 }
 
 class _SyncScreenState extends ConsumerState<SyncScreen> {
-  final _urlController = TextEditingController();
-  final _keyController = TextEditingController();
-  final _emailController = TextEditingController();
+  final _usernameController = TextEditingController();
   final _passwordController = TextEditingController();
   bool _busy = false;
   String? _status;
 
   @override
-  void initState() {
-    super.initState();
-    _load();
-  }
-
-  Future<void> _load() async {
-    final db = ref.read(databaseProvider);
-    _urlController.text = await db.getSetting(SyncKeys.url) ?? '';
-    _keyController.text = await db.getSetting(SyncKeys.anonKey) ?? '';
-    if (mounted) setState(() {});
-  }
-
-  @override
   void dispose() {
-    _urlController.dispose();
-    _keyController.dispose();
-    _emailController.dispose();
+    _usernameController.dispose();
     _passwordController.dispose();
     super.dispose();
   }
@@ -47,15 +30,10 @@ class _SyncScreenState extends ConsumerState<SyncScreen> {
       _busy = true;
       _status = null;
     });
-    final db = ref.read(databaseProvider);
     try {
-      final url = _urlController.text.trim();
-      final key = _keyController.text.trim();
-      await db.setSetting(SyncKeys.url, url);
-      await db.setSetting(SyncKeys.anonKey, key);
-      await initSupabaseNow(url, key);
+      await initSupabaseNow();
       await Supabase.instance.client.auth.signInWithPassword(
-        email: _emailController.text.trim(),
+        email: _usernameController.text.trim(),
         password: _passwordController.text,
       );
       setState(() => _status = 'Signed in. You can sync now.');
@@ -91,32 +69,17 @@ class _SyncScreenState extends ConsumerState<SyncScreen> {
           Text(
             signedIn
                 ? 'Connected to Supabase.'
-                : 'Enter your Supabase project details (see supabase/schema.sql for one-time setup), then sign in.',
+                : SyncConfig.isConfigured
+                ? 'Sign in to sync with your configured Supabase project.'
+                : 'Create config/sync_config.json, then run the app normally.',
             style: Theme.of(context).textTheme.bodyMedium,
           ),
           const SizedBox(height: 16),
           TextField(
-            controller: _urlController,
-            decoration: const InputDecoration(
-              labelText: 'Supabase URL',
-              hintText: 'https://xxxx.supabase.co',
-              border: OutlineInputBorder(),
-            ),
-          ),
-          const SizedBox(height: 12),
-          TextField(
-            controller: _keyController,
-            decoration: const InputDecoration(
-              labelText: 'Publishable (or anon) key',
-              border: OutlineInputBorder(),
-            ),
-          ),
-          const SizedBox(height: 12),
-          TextField(
-            controller: _emailController,
+            controller: _usernameController,
             keyboardType: TextInputType.emailAddress,
             decoration: const InputDecoration(
-              labelText: 'Email',
+              labelText: 'Username',
               border: OutlineInputBorder(),
             ),
           ),
@@ -132,7 +95,7 @@ class _SyncScreenState extends ConsumerState<SyncScreen> {
           const SizedBox(height: 16),
           FilledButton(
             onPressed: _busy ? null : _connect,
-            child: const Text('Connect & sign in'),
+            child: const Text('Sign in'),
           ),
           const SizedBox(height: 8),
           OutlinedButton.icon(
@@ -153,7 +116,8 @@ class _SyncScreenState extends ConsumerState<SyncScreen> {
           const SizedBox(height: 16),
           Text(
             'Notes:\n'
-            '• A restart is needed if you change the Supabase URL after connecting once.\n'
+            '• Project URL and publishable key come from config/sync_config.json.\n'
+            '• A restart is needed if you change the sync config after launching.\n'
             '• Sync runs automatically when the app starts; use Sync now after big changes.\n'
             '• All devices must sign in with the same user.',
             style: Theme.of(context).textTheme.bodySmall,
