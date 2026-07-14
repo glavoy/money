@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:package_info_plus/package_info_plus.dart';
 
 import '../../shared/widgets.dart';
 import '../import/import_screen.dart';
@@ -25,21 +26,27 @@ class SettingsScreen extends ConsumerWidget {
           title: 'Categories',
           subtitle: 'Add, rename, or archive categories',
           onTap: () => Navigator.push(
-              context, MaterialPageRoute(builder: (_) => const CategoriesScreen())),
+            context,
+            MaterialPageRoute(builder: (_) => const CategoriesScreen()),
+          ),
         ),
         _SettingsTile(
           icon: Icons.account_balance_wallet_outlined,
           title: 'Accounts',
           subtitle: 'Manage accounts and opening balances',
-          onTap: () => Navigator.push(context,
-              MaterialPageRoute(builder: (_) => const AccountsManageScreen())),
+          onTap: () => Navigator.push(
+            context,
+            MaterialPageRoute(builder: (_) => const AccountsManageScreen()),
+          ),
         ),
         _SettingsTile(
           icon: Icons.currency_exchange_outlined,
           title: 'Exchange rates',
           subtitle: 'View, fetch, or enter UGX/USD/CAD rates',
           onTap: () => Navigator.push(
-              context, MaterialPageRoute(builder: (_) => const FxRatesScreen())),
+            context,
+            MaterialPageRoute(builder: (_) => const FxRatesScreen()),
+          ),
         ),
         const Padding(
           padding: EdgeInsets.only(left: 4, top: 16, bottom: 4),
@@ -50,14 +57,36 @@ class SettingsScreen extends ConsumerWidget {
           title: 'Sync',
           subtitle: 'Supabase connection and manual sync',
           onTap: () => Navigator.push(
-              context, MaterialPageRoute(builder: (_) => const SyncScreen())),
+            context,
+            MaterialPageRoute(builder: (_) => const SyncScreen()),
+          ),
         ),
         _SettingsTile(
           icon: Icons.upload_file_outlined,
           title: 'Import data',
           subtitle: 'Import CSV files produced by import_xlsx.py',
           onTap: () => Navigator.push(
-              context, MaterialPageRoute(builder: (_) => const ImportScreen())),
+            context,
+            MaterialPageRoute(builder: (_) => const ImportScreen()),
+          ),
+        ),
+        const Padding(
+          padding: EdgeInsets.only(left: 4, top: 16, bottom: 4),
+          child: SectionLabel('App'),
+        ),
+        FutureBuilder<PackageInfo>(
+          future: PackageInfo.fromPlatform(),
+          builder: (context, snapshot) {
+            final info = snapshot.data;
+            final version = info == null
+                ? 'Loading...'
+                : '${info.version}+${info.buildNumber}';
+            return _SettingsTile(
+              icon: Icons.info_outline,
+              title: 'Version',
+              subtitle: version,
+            );
+          },
         ),
       ],
     );
@@ -69,13 +98,13 @@ class _SettingsTile extends StatelessWidget {
     required this.icon,
     required this.title,
     required this.subtitle,
-    required this.onTap,
+    this.onTap,
   });
 
   final IconData icon;
   final String title;
   final String subtitle;
-  final VoidCallback onTap;
+  final VoidCallback? onTap;
 
   @override
   Widget build(BuildContext context) {
@@ -89,7 +118,7 @@ class _SettingsTile extends StatelessWidget {
         ),
         title: Text(title, style: const TextStyle(fontWeight: FontWeight.w500)),
         subtitle: Text(subtitle),
-        trailing: const Icon(Icons.chevron_right),
+        trailing: onTap == null ? null : const Icon(Icons.chevron_right),
         onTap: onTap,
       ),
     );
