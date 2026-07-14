@@ -16,12 +16,19 @@ class TransactionsScreen extends ConsumerStatefulWidget {
 }
 
 class _TransactionsScreenState extends ConsumerState<TransactionsScreen> {
+  static const _historyPageMonths = 12;
+
   String? _accountId;
   String? _categoryId;
-  DateTimeRange? _range;
+  _DatePreset _datePreset = _DatePreset.recentMonths;
+  DateTimeRange? _customRange;
+  int _recentMonths = _historyPageMonths;
 
   bool get _hasFilters =>
-      _accountId != null || _categoryId != null || _range != null;
+      _accountId != null ||
+      _categoryId != null ||
+      _datePreset != _DatePreset.recentMonths ||
+      _recentMonths != _historyPageMonths;
 
   @override
   Widget build(BuildContext context) {
@@ -32,6 +39,7 @@ class _TransactionsScreenState extends ConsumerState<TransactionsScreen> {
     final latestRate = ref.watch(latestRateProvider).value;
     final accountById = {for (final a in accounts) a.id: a};
     final categoryById = {for (final c in categories) c.id: c};
+    final range = _effectiveRange();
 
     return Column(
       children: [
@@ -45,23 +53,9 @@ class _TransactionsScreenState extends ConsumerState<TransactionsScreen> {
                   child: Row(
                     children: [
                       FilterChip(
-                        label: Text(
-                          _range == null
-                              ? 'All dates'
-                              : '${DateFormat('d MMM yy').format(_range!.start)} – ${DateFormat('d MMM yy').format(_range!.end)}',
-                        ),
-                        selected: _range != null,
-                        onSelected: (_) async {
-                          final picked = await showDateRangePicker(
-                            context: context,
-                            firstDate: DateTime(2000),
-                            lastDate: DateTime.now().add(
-                              const Duration(days: 1),
-                            ),
-                            initialDateRange: _range,
-                          );
-                          setState(() => _range = picked);
-                        },
+                        label: Text(_dateLabel(range)),
+                        selected: _datePreset != _DatePreset.allHistory,
+                        onSelected: (_) => _pickDatePreset(context),
                       ),
                       const SizedBox(width: 6),
                       FilterChip(
@@ -111,7 +105,9 @@ class _TransactionsScreenState extends ConsumerState<TransactionsScreen> {
                   onPressed: () => setState(() {
                     _accountId = null;
                     _categoryId = null;
-                    _range = null;
+                    _datePreset = _DatePreset.recentMonths;
+                    _customRange = null;
+                    _recentMonths = _historyPageMonths;
                   }),
                 ),
             ],
@@ -120,19 +116,19 @@ class _TransactionsScreenState extends ConsumerState<TransactionsScreen> {
         Expanded(
           child: StreamBuilder<List<Transaction>>(
             stream: db.watchTransactions(
-              from: _range == null
+              from: range == null
                   ? null
                   : DateTime.utc(
-                      _range!.start.year,
-                      _range!.start.month,
-                      _range!.start.day,
+                      range.start.year,
+                      range.start.month,
+                      range.start.day,
                     ),
-              to: _range == null
+              to: range == null
                   ? null
                   : DateTime.utc(
-                      _range!.end.year,
-                      _range!.end.month,
-                      _range!.end.day,
+                      range.end.year,
+                      range.end.month,
+                      range.end.day,
                     ),
               accountId: _accountId,
               categoryId: _categoryId,
@@ -142,22 +138,34 @@ class _TransactionsScreenState extends ConsumerState<TransactionsScreen> {
               final txs = snapshot.data ?? [];
               if (txs.isEmpty) {
                 return Center(
-                  child: Column(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      Icon(
-                        Icons.receipt_long_outlined,
-                        size: 48,
-                        color: theme.colorScheme.outline,
-                      ),
-                      const SizedBox(height: 8),
-                      Text(
-                        'No transactions',
-                        style: theme.textTheme.bodyLarge?.copyWith(
-                          color: theme.colorScheme.onSurfaceVariant,
+                  child: Padding(
+                    padding: const EdgeInsets.all(24),
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(
+                          Icons.receipt_long_outlined,
+                          size: 48,
+                          color: theme.colorScheme.outline,
                         ),
-                      ),
-                    ],
+                        const SizedBox(height: 8),
+                        Text(
+                          'No transactions',
+                          style: theme.textTheme.bodyLarge?.copyWith(
+                            color: theme.colorScheme.onSurfaceVariant,
+                          ),
+                        ),
+                        if (_canLoadOlder) ...[
+                          const SizedBox(height: 16),
+                          OutlinedButton.icon(
+                            onPressed: _loadOlder,
+                            icon: const Icon(Icons.history),
+                            label: const Text('Load older'),
+                          ),
+                        ],
+                      ],
+                    ),
                   ),
                 );
               }
@@ -170,8 +178,18 @@ class _TransactionsScreenState extends ConsumerState<TransactionsScreen> {
               final days = groups.keys.toList()..sort((a, b) => b.compareTo(a));
               return ListView.builder(
                 padding: const EdgeInsets.only(bottom: 16),
-                itemCount: days.length,
+                itemCount: days.length + (_canLoadOlder ? 1 : 0),
                 itemBuilder: (context, i) {
+                  if (i == days.length) {
+                    return Padding(
+                      padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
+                      child: OutlinedButton.icon(
+                        onPressed: _loadOlder,
+                        icon: const Icon(Icons.history),
+                        label: const Text('Load older'),
+                      ),
+                    );
+                  }
                   final day = days[i];
                   final dayTxs = groups[day]!;
                   double spentUgx = 0;
@@ -243,6 +261,138 @@ class _TransactionsScreenState extends ConsumerState<TransactionsScreen> {
     if (day == today.subtract(const Duration(days: 1))) return 'Yesterday';
     return DateFormat('EEEE d MMMM yyyy').format(day);
   }
+
+  bool get _canLoadOlder => _datePreset == _DatePreset.recentMonths;
+
+  void _loadOlder() {
+    setState(() => _recentMonths += _historyPageMonths);
+  }
+
+  DateTimeRange? _effectiveRange() {
+    final now = DateTime.now();
+    final today = DateTime.utc(now.year, now.month, now.day);
+    final tomorrow = today.add(const Duration(days: 1));
+
+    return switch (_datePreset) {
+      _DatePreset.recentMonths => DateTimeRange(
+        start: _addMonths(tomorrow, -_recentMonths),
+        end: tomorrow,
+      ),
+      _DatePreset.last30Days => DateTimeRange(
+        start: tomorrow.subtract(const Duration(days: 30)),
+        end: tomorrow,
+      ),
+      _DatePreset.last3Months => DateTimeRange(
+        start: _addMonths(tomorrow, -3),
+        end: tomorrow,
+      ),
+      _DatePreset.thisYear => DateTimeRange(
+        start: DateTime.utc(today.year),
+        end: tomorrow,
+      ),
+      _DatePreset.lastYear => DateTimeRange(
+        start: DateTime.utc(today.year - 1),
+        end: DateTime.utc(today.year),
+      ),
+      _DatePreset.custom => _customRange,
+      _DatePreset.allHistory => null,
+    };
+  }
+
+  String _dateLabel(DateTimeRange? range) {
+    return switch (_datePreset) {
+      _DatePreset.recentMonths =>
+        _recentMonths == _historyPageMonths
+            ? 'Last 12 months'
+            : 'Last $_recentMonths months',
+      _DatePreset.last30Days => 'Last 30 days',
+      _DatePreset.last3Months => 'Last 3 months',
+      _DatePreset.thisYear => 'This year',
+      _DatePreset.lastYear => 'Last year',
+      _DatePreset.allHistory => 'All history',
+      _DatePreset.custom =>
+        range == null
+            ? 'Custom range'
+            : '${DateFormat('d MMM yy').format(range.start)} – ${DateFormat('d MMM yy').format(range.end)}',
+    };
+  }
+
+  Future<void> _pickDatePreset(BuildContext context) async {
+    final picked = await showModalBottomSheet<_DatePreset>(
+      context: context,
+      builder: (context) => SafeArea(
+        child: ListView(
+          shrinkWrap: true,
+          children: [
+            ListTile(
+              title: Text(
+                'Date range',
+                style: Theme.of(context).textTheme.titleMedium,
+              ),
+            ),
+            for (final preset in _DatePreset.values)
+              ListTile(
+                selected: preset == _datePreset,
+                title: Text(_presetLabel(preset)),
+                trailing: preset == _datePreset
+                    ? const Icon(Icons.check)
+                    : null,
+                onTap: () => Navigator.pop(context, preset),
+              ),
+          ],
+        ),
+      ),
+    );
+    if (picked == null) return;
+    if (!context.mounted) return;
+
+    if (picked == _DatePreset.custom) {
+      final initialRange = _customRange ?? _effectiveRange();
+      final custom = await showDateRangePicker(
+        context: context,
+        firstDate: DateTime(2000),
+        lastDate: DateTime.now().add(const Duration(days: 1)),
+        initialDateRange: initialRange,
+      );
+      if (custom == null) return;
+      setState(() {
+        _datePreset = picked;
+        _customRange = custom;
+      });
+      return;
+    }
+
+    setState(() {
+      _datePreset = picked;
+      _recentMonths = _historyPageMonths;
+    });
+  }
+}
+
+enum _DatePreset {
+  recentMonths,
+  last30Days,
+  last3Months,
+  thisYear,
+  lastYear,
+  allHistory,
+  custom,
+}
+
+String _presetLabel(_DatePreset preset) {
+  return switch (preset) {
+    _DatePreset.recentMonths => 'Last 12 months',
+    _DatePreset.last30Days => 'Last 30 days',
+    _DatePreset.last3Months => 'Last 3 months',
+    _DatePreset.thisYear => 'This year',
+    _DatePreset.lastYear => 'Last year',
+    _DatePreset.allHistory => 'All history',
+    _DatePreset.custom => 'Custom range',
+  };
+}
+
+DateTime _addMonths(DateTime date, int months) {
+  return DateTime.utc(date.year, date.month + months, date.day);
 }
 
 Future<String?> _pickFromList(
