@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -87,7 +89,10 @@ ThemeData _buildTheme(Brightness brightness) {
       behavior: SnackBarBehavior.floating,
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
     ),
-    dividerTheme: DividerThemeData(color: scheme.outlineVariant, thickness: 0.5),
+    dividerTheme: DividerThemeData(
+      color: scheme.outlineVariant,
+      thickness: 0.5,
+    ),
     listTileTheme: const ListTileThemeData(
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.all(Radius.circular(12)),
@@ -118,18 +123,51 @@ class HomeShell extends ConsumerStatefulWidget {
   ConsumerState<HomeShell> createState() => _HomeShellState();
 }
 
-class _HomeShellState extends ConsumerState<HomeShell> {
-  int _index = 0;
+class _HomeShellState extends ConsumerState<HomeShell>
+    with WidgetsBindingObserver {
+  static const _periodicSyncInterval = Duration(minutes: 5);
 
-  static const _titles = ['Money', 'History', 'Accounts', 'Reports', 'Settings'];
+  int _index = 0;
+  Timer? _periodicSyncTimer;
+
+  static const _titles = [
+    'Money',
+    'History',
+    'Accounts',
+    'Reports',
+    'Settings',
+  ];
 
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     // Fire-and-forget background sync on app start.
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      ref.read(syncServiceProvider).syncSilently();
+      _syncSilently();
     });
+    _periodicSyncTimer = Timer.periodic(
+      _periodicSyncInterval,
+      (_) => _syncSilently(),
+    );
+  }
+
+  @override
+  void dispose() {
+    _periodicSyncTimer?.cancel();
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      _syncSilently();
+    }
+  }
+
+  void _syncSilently() {
+    ref.read(syncServiceProvider).syncSilently();
   }
 
   @override
