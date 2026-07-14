@@ -107,11 +107,9 @@ class SyncService {
             ? DateTime.utc(1970)
             : DateTime.parse(lastSyncRaw).toUtc();
 
-        // Pull remote changes.
-        final remoteRows = await client
-            .from(table.remote)
-            .select()
-            .gt('updated_at', lastSync.toIso8601String());
+        // Pull all remote rows in pages. This repairs earlier partial pulls
+        // where a cursor may have advanced after Supabase returned one page.
+        final remoteRows = await _fetchAllRemoteRows(client, table.remote);
         for (final row in remoteRows) {
           if (await table.applyRemote(db, row)) pulled++;
         }
@@ -137,6 +135,27 @@ class SyncService {
         _rerunAfterCurrent = false;
         Future<void>.microtask(syncSilently);
       }
+    }
+  }
+}
+
+Future<List<Map<String, dynamic>>> _fetchAllRemoteRows(
+  SupabaseClient client,
+  String table,
+) async {
+  const pageSize = 1000;
+  final allRows = <Map<String, dynamic>>[];
+
+  for (var from = 0; ; from += pageSize) {
+    final page = await client
+        .from(table)
+        .select()
+        .order('updated_at')
+        .range(from, from + pageSize - 1);
+    allRows.addAll([for (final row in page) Map<String, dynamic>.from(row)]);
+
+    if (page.length < pageSize) {
+      return allRows;
     }
   }
 }

@@ -164,7 +164,10 @@ class AppDatabase extends _$AppDatabase {
   Future<List<Account>> getAccounts({bool includeArchived = false}) {
     final q = select(accounts)
       ..where((a) => a.deleted.equals(false))
-      ..orderBy([(a) => OrderingTerm.asc(a.sortOrder), (a) => OrderingTerm.asc(a.name)]);
+      ..orderBy([
+        (a) => OrderingTerm.asc(a.sortOrder),
+        (a) => OrderingTerm.asc(a.name),
+      ]);
     if (!includeArchived) {
       q.where((a) => a.archived.equals(false));
     }
@@ -241,7 +244,10 @@ class AppDatabase extends _$AppDatabase {
   }) {
     final q = select(categories)
       ..where((c) => c.deleted.equals(false))
-      ..orderBy([(c) => OrderingTerm.asc(c.sortOrder), (c) => OrderingTerm.asc(c.name)]);
+      ..orderBy([
+        (c) => OrderingTerm.asc(c.sortOrder),
+        (c) => OrderingTerm.asc(c.name),
+      ]);
     if (kind != null) {
       q.where((c) => c.kind.equals(kind));
     }
@@ -285,15 +291,15 @@ class AppDatabase extends _$AppDatabase {
     String? accountId,
     String? categoryId,
     String? kind,
-    int limit = 500,
+    int? limit = 500,
   }) {
     final q = select(transactions)
       ..where((t) => t.deleted.equals(false))
       ..orderBy([
         (t) => OrderingTerm.desc(t.date),
         (t) => OrderingTerm.desc(t.createdAt),
-      ])
-      ..limit(limit);
+      ]);
+    if (limit != null) q.limit(limit);
     if (from != null) q.where((t) => t.date.isBiggerOrEqualValue(from));
     if (to != null) q.where((t) => t.date.isSmallerOrEqualValue(to));
     if (accountId != null) {
