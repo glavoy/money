@@ -1,7 +1,10 @@
 import 'package:csv/csv.dart';
 import 'package:drift/drift.dart' show InsertMode, Value;
+import 'package:uuid/uuid.dart';
 
 import '../../data/database.dart';
+
+const _uuid = Uuid();
 
 class ImportResult {
   ImportResult(this.kind, this.imported, this.skipped);
@@ -11,10 +14,10 @@ class ImportResult {
   final int skipped;
 }
 
-/// Imports one CSV file's content (from tools/import_xlsx.py). The file type
-/// is detected from the header row. Rows with unknown accounts/categories or
-/// unparseable values are counted as skipped. Idempotent: rows are keyed by
-/// their id and overwrite themselves on re-import.
+/// Imports one CSV file's content. The file type is detected from the header
+/// row. Rows with unknown accounts/categories or unparseable values are counted
+/// as skipped. Transaction imports are keyed by id. FX imports are keyed by
+/// date, so a CSV row overwrites only the existing row for the same date.
 Future<ImportResult> importCsvContent(
   AppDatabase db,
   String content, {
@@ -131,43 +134,50 @@ Future<ImportResult> _importFxRates(
   final now = DateTime.now().toUtc();
 
   var imported = 0, skipped = 0;
-  final pending = <FxRatesCompanion>[];
-
-  Future<void> flush() async {
-    if (pending.isEmpty) return;
-    final copy = List.of(pending);
-    pending.clear();
-    await db.batch((b) {
-      for (final r in copy) {
-        b.insert(db.fxRates, r, mode: InsertMode.insertOrReplace);
-      }
-    });
-    onProgress?.call(imported);
-  }
 
   for (final row in rows) {
-    final id = _cell(col, row, 'id');
     final dateRaw = _cell(col, row, 'date');
     final date = dateRaw == null ? null : DateTime.tryParse(dateRaw);
-    if (id == null || date == null) {
+    if (date == null) {
       skipped++;
       continue;
     }
-    pending.add(
-      FxRatesCompanion.insert(
-        id: id,
-        date: DateTime.utc(date.year, date.month, date.day),
-        usdUgx: Value(double.tryParse(_cell(col, row, 'usd_ugx') ?? '')),
-        cadUgx: Value(double.tryParse(_cell(col, row, 'cad_ugx') ?? '')),
-        usdCad: Value(double.tryParse(_cell(col, row, 'usd_cad') ?? '')),
-        source: Value(_cell(col, row, 'source') ?? FxSource.import),
-        createdAt: now,
-        updatedAt: now,
-      ),
-    );
+    final day = DateTime.utc(date.year, date.month, date.day);
+    final existing = await (db.select(
+      db.fxRates,
+    )..where((r) => r.date.equals(day))).getSingleOrNull();
+    if (existing == null) {
+      await db
+          .into(db.fxRates)
+          .insert(
+            FxRatesCompanion.insert(
+              id: _uuid.v4(),
+              date: day,
+              usdUgx: Value(double.tryParse(_cell(col, row, 'usd_ugx') ?? '')),
+              cadUgx: Value(double.tryParse(_cell(col, row, 'cad_ugx') ?? '')),
+              usdCad: Value(double.tryParse(_cell(col, row, 'usd_cad') ?? '')),
+              source: const Value(FxSource.import),
+              createdAt: now,
+              updatedAt: now,
+            ),
+          );
+    } else {
+      await (db.update(
+        db.fxRates,
+      )..where((r) => r.id.equals(existing.id))).write(
+        FxRatesCompanion(
+          usdUgx: Value(double.tryParse(_cell(col, row, 'usd_ugx') ?? '')),
+          cadUgx: Value(double.tryParse(_cell(col, row, 'cad_ugx') ?? '')),
+          usdCad: Value(double.tryParse(_cell(col, row, 'usd_cad') ?? '')),
+          source: const Value(FxSource.import),
+          updatedAt: Value(now),
+          deleted: const Value(false),
+        ),
+      );
+    }
     imported++;
-    if (pending.length >= 2000) await flush();
+    if (imported % 200 == 0) onProgress?.call(imported);
   }
-  await flush();
+  onProgress?.call(imported);
   return ImportResult('fx_rates', imported, skipped);
 }

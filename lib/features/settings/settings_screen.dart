@@ -81,7 +81,7 @@ class SettingsScreen extends ConsumerWidget {
         _SettingsTile(
           icon: Icons.upload_file_outlined,
           title: 'Import data',
-          subtitle: 'Import CSV files produced by import_xlsx.py',
+          subtitle: 'Import transactions.csv or x-rates.csv',
           onTap: () => Navigator.push(
             context,
             MaterialPageRoute(builder: (_) => const ImportScreen()),

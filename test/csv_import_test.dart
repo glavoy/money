@@ -1,3 +1,4 @@
+import 'package:drift/drift.dart' show Value;
 import 'package:drift/native.dart';
 import 'package:money/data/database.dart';
 import 'package:money/data/seed.dart';
@@ -16,9 +17,9 @@ unknown-account,2006-01-02,expense,10,acc-nope,cat-expense-food,,,
 ''';
 
 const _fxCsv = '''
-id,date,usd_ugx,cad_ugx,usd_cad,source
-fx-20060101,2006-01-01,1820.0,1564.0,1.1641,import
-fx-20060102,2006-01-02,1820.0,1567.0,1.1628,import
+date,usd_ugx,cad_ugx,usd_cad
+2006-01-01,1820.0,1564.0,1.1641
+2006-01-02,1820.0,1567.0,1.1628
 ''';
 
 void main() {
@@ -60,7 +61,7 @@ void main() {
     expect(txs.length, 4);
   });
 
-  test('imports fx rates and keeps the import source', () async {
+  test('imports fx rates from date-keyed csv and generates metadata', () async {
     final result = await importCsvContent(
       db,
       _fxCsv,
@@ -72,7 +73,66 @@ void main() {
     expect(rate!.usdUgx, 1820);
     expect(rate.cadUgx, 1564);
     expect(rate.source, FxSource.import);
+    expect(rate.id, isNotEmpty);
+    expect(rate.deleted, isFalse);
   });
+
+  test(
+    'fx import overwrites matching dates and leaves other dates alone',
+    () async {
+      await db
+          .into(db.fxRates)
+          .insert(
+            FxRatesCompanion.insert(
+              id: 'existing-rate',
+              date: DateTime.utc(2006, 1, 1),
+              usdUgx: const Value(1),
+              cadUgx: const Value(2),
+              usdCad: const Value(3),
+              source: const Value(FxSource.manual),
+              createdAt: DateTime.utc(2000),
+              updatedAt: DateTime.utc(2000),
+              deleted: const Value(true),
+            ),
+          );
+      await db
+          .into(db.fxRates)
+          .insert(
+            FxRatesCompanion.insert(
+              id: 'untouched-rate',
+              date: DateTime.utc(2006, 1, 3),
+              usdUgx: const Value(9),
+              cadUgx: const Value(8),
+              usdCad: const Value(7),
+              source: const Value(FxSource.manual),
+              createdAt: DateTime.utc(2000),
+              updatedAt: DateTime.utc(2000),
+            ),
+          );
+
+      final result = await importCsvContent(
+        db,
+        _fxCsv,
+        ledgerId: personalLedgerId,
+      );
+
+      expect(result.imported, 2);
+      final overwritten = await db.getRateOn(DateTime.utc(2006, 1, 1));
+      expect(overwritten!.id, 'existing-rate');
+      expect(overwritten.usdUgx, 1820);
+      expect(overwritten.cadUgx, 1564);
+      expect(overwritten.usdCad, 1.1641);
+      expect(overwritten.source, FxSource.import);
+      expect(overwritten.deleted, isFalse);
+
+      final untouched = await (db.select(
+        db.fxRates,
+      )..where((r) => r.id.equals('untouched-rate'))).getSingle();
+      expect(untouched.usdUgx, 9);
+      expect(untouched.source, FxSource.manual);
+      expect(untouched.deleted, isFalse);
+    },
+  );
 
   test('unrecognised header is rejected', () async {
     final result = await importCsvContent(

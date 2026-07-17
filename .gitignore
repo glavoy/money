@@ -87,6 +87,7 @@ supabase/.env
 supabase/.env.*
 
 # Local app data, imports, and debug output
+supabase/x-rates.csv
 *.db
 *.sqlite
 *.sqlite3

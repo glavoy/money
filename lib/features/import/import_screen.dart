@@ -73,9 +73,9 @@ class _ImportScreenState extends ConsumerState<ImportScreen> {
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
             const Text(
-              'Import transactions.csv and fx_rates.csv produced by '
-              'tools/import_xlsx.py. Re-importing the same files is safe: '
-              'rows overwrite themselves and never duplicate.',
+              'Import transactions.csv or x-rates.csv. Re-importing the same '
+              'files is safe: transactions overwrite by id, and exchange '
+              'rates overwrite the matching date.',
             ),
             const SizedBox(height: 16),
             FilledButton.icon(
