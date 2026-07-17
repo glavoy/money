@@ -1,14 +1,22 @@
+import 'dart:async';
+
 import 'package:drift/drift.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart'
     as riverpod
-    show Provider;
+    show Provider, StreamProvider;
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../data/database.dart';
 import '../data/seed.dart';
 import '../shared/providers.dart';
 import 'sync_config.dart';
+
+class SyncKeys {
+  static const lastSyncPrefix = 'last_sync_';
+  static const strategyVersion = 'sync_strategy_version';
+  static const currentStrategyVersion = '2';
+}
 
 bool _supabaseInitialized = false;
 
@@ -35,7 +43,13 @@ Future<void> initSupabaseNow() async {
 bool get supabaseReady => _supabaseInitialized;
 
 final syncServiceProvider = riverpod.Provider<SyncService>((ref) {
-  return SyncService(ref.watch(databaseProvider));
+  final service = SyncService(ref.watch(databaseProvider));
+  ref.onDispose(service.dispose);
+  return service;
+});
+
+final syncStateProvider = riverpod.StreamProvider<int>((ref) {
+  return ref.watch(syncServiceProvider).changes;
 });
 
 class SyncResult {
@@ -68,9 +82,28 @@ class SyncTableResult {
 class SyncService {
   SyncService(this.db);
 
+  static const _incrementalOverlap = Duration(minutes: 10);
+
   final AppDatabase db;
-  bool _running = false;
   bool _rerunAfterCurrent = false;
+  Future<SyncResult>? _currentSync;
+  SyncResult? _lastResult;
+  var _changeVersion = 0;
+  final _changes = StreamController<int>.broadcast();
+
+  bool get isRunning => _currentSync != null;
+  SyncResult? get lastResult => _lastResult;
+  Stream<int> get changes => _changes.stream;
+
+  void dispose() {
+    _changes.close();
+  }
+
+  void _emitChanged() {
+    if (!_changes.isClosed) {
+      _changes.add(++_changeVersion);
+    }
+  }
 
   bool get isSignedIn =>
       _supabaseInitialized &&
@@ -81,23 +114,18 @@ class SyncService {
     if (!isSignedIn) {
       return;
     }
-    if (_running) {
+    if (isRunning) {
       _rerunAfterCurrent = true;
       return;
     }
-    try {
-      await sync();
-    } catch (e) {
-      debugPrint('Background sync failed: $e');
-    }
+    Future<void>.microtask(sync);
   }
 
   /// Two-way sync of all tables. Last write wins on updated_at.
   ///
-  /// Correctness does not depend on table-level cursors. Every sync pulls all
-  /// remote rows, applies newer rows locally, then uploads all local rows.
-  /// The data set is small enough that this is safer than a single cursor per
-  /// table, which can miss rows when two devices edit the same table.
+  /// Normal sync is incremental with a small overlap window. When the sync
+  /// strategy changes, the first sync performs a full reconciliation once, then
+  /// stores the new strategy marker and returns to incremental syncing.
   Future<SyncResult> sync() async {
     if (!isSignedIn) {
       return SyncResult(
@@ -106,17 +134,50 @@ class SyncService {
         error: 'Not signed in to Supabase',
       );
     }
-    if (_running) {
-      return SyncResult(pushed: 0, pulled: 0, error: 'Sync already running');
+    if (_currentSync != null) {
+      return _currentSync!;
     }
-    _running = true;
+
+    _currentSync = _runSync();
+    _emitChanged();
+    try {
+      final result = await _currentSync!;
+      _lastResult = result;
+      return result;
+    } finally {
+      _currentSync = null;
+      _emitChanged();
+      if (_rerunAfterCurrent) {
+        _rerunAfterCurrent = false;
+        Future<void>.microtask(syncSilently);
+      }
+    }
+  }
+
+  Future<SyncResult> _runSync() async {
     try {
       var pushed = 0, pulled = 0;
       final tableResults = <SyncTableResult>[];
       final client = Supabase.instance.client;
+      final syncStart = DateTime.now().toUtc();
+      final needsReconcile =
+          await db.getSetting(SyncKeys.strategyVersion) !=
+          SyncKeys.currentStrategyVersion;
+
       for (final table in _tables) {
         var tablePushed = 0, tablePulled = 0;
-        final remoteRows = await _fetchAllRemoteRows(client, table.remote);
+        final lastSyncRaw = await db.getSetting(
+          '${SyncKeys.lastSyncPrefix}${table.remote}',
+        );
+        final since = needsReconcile || lastSyncRaw == null
+            ? DateTime.utc(1970)
+            : DateTime.parse(lastSyncRaw).toUtc().subtract(_incrementalOverlap);
+
+        final remoteRows = await _fetchRemoteRowsSince(
+          client,
+          table.remote,
+          since,
+        );
         for (final row in remoteRows) {
           if (await table.applyRemote(db, row)) {
             pulled++;
@@ -126,7 +187,7 @@ class SyncService {
 
         // Push local rows after remote rows are applied. If remote had the
         // newer version of a row, local now has that newer version too.
-        final localRows = await table.localRows(db);
+        final localRows = await table.localRowsSince(db, since);
         if (localRows.isNotEmpty) {
           await client.from(table.remote).upsert(localRows);
           pushed += localRows.length;
@@ -139,23 +200,26 @@ class SyncService {
             pulled: tablePulled,
           ),
         );
+        await db.setSetting(
+          '${SyncKeys.lastSyncPrefix}${table.remote}',
+          syncStart.toIso8601String(),
+        );
       }
+      await db.setSetting(
+        SyncKeys.strategyVersion,
+        SyncKeys.currentStrategyVersion,
+      );
       return SyncResult(pushed: pushed, pulled: pulled, tables: tableResults);
     } on Object catch (e) {
       return SyncResult(pushed: 0, pulled: 0, error: e.toString());
-    } finally {
-      _running = false;
-      if (_rerunAfterCurrent) {
-        _rerunAfterCurrent = false;
-        Future<void>.microtask(syncSilently);
-      }
     }
   }
 }
 
-Future<List<Map<String, dynamic>>> _fetchAllRemoteRows(
+Future<List<Map<String, dynamic>>> _fetchRemoteRowsSince(
   SupabaseClient client,
   String table,
+  DateTime since,
 ) async {
   const pageSize = 1000;
   final allRows = <Map<String, dynamic>>[];
@@ -164,6 +228,7 @@ Future<List<Map<String, dynamic>>> _fetchAllRemoteRows(
     final page = await client
         .from(table)
         .select()
+        .gte('updated_at', _iso(since))
         .order('updated_at')
         .range(from, from + pageSize - 1);
     allRows.addAll([for (final row in page) Map<String, dynamic>.from(row)]);
@@ -181,12 +246,13 @@ double? _num(dynamic v) => v == null ? null : (v as num).toDouble();
 class _TableSync {
   const _TableSync({
     required this.remote,
-    required this.localRows,
+    required this.localRowsSince,
     required this.applyRemote,
   });
 
   final String remote;
-  final Future<List<Map<String, dynamic>>> Function(AppDatabase) localRows;
+  final Future<List<Map<String, dynamic>>> Function(AppDatabase, DateTime)
+  localRowsSince;
 
   /// Returns true when the remote row replaced/created a local row.
   final Future<bool> Function(AppDatabase, Map<String, dynamic>) applyRemote;
@@ -195,8 +261,10 @@ class _TableSync {
 final _tables = <_TableSync>[
   _TableSync(
     remote: 'ledgers',
-    localRows: (db) async {
-      final rows = await db.select(db.ledgers).get();
+    localRowsSince: (db, since) async {
+      final rows = await (db.select(
+        db.ledgers,
+      )..where((t) => t.updatedAt.isBiggerOrEqualValue(since))).get();
       return [
         for (final r in rows)
           {
@@ -236,8 +304,10 @@ final _tables = <_TableSync>[
   ),
   _TableSync(
     remote: 'accounts',
-    localRows: (db) async {
-      final rows = await db.select(db.accounts).get();
+    localRowsSince: (db, since) async {
+      final rows = await (db.select(
+        db.accounts,
+      )..where((t) => t.updatedAt.isBiggerOrEqualValue(since))).get();
       return [
         for (final r in rows)
           {
@@ -291,8 +361,10 @@ final _tables = <_TableSync>[
   ),
   _TableSync(
     remote: 'categories',
-    localRows: (db) async {
-      final rows = await db.select(db.categories).get();
+    localRowsSince: (db, since) async {
+      final rows = await (db.select(
+        db.categories,
+      )..where((t) => t.updatedAt.isBiggerOrEqualValue(since))).get();
       return [
         for (final r in rows)
           {
@@ -338,8 +410,10 @@ final _tables = <_TableSync>[
   ),
   _TableSync(
     remote: 'transactions',
-    localRows: (db) async {
-      final rows = await db.select(db.transactions).get();
+    localRowsSince: (db, since) async {
+      final rows = await (db.select(
+        db.transactions,
+      )..where((t) => t.updatedAt.isBiggerOrEqualValue(since))).get();
       return [
         for (final r in rows)
           {
@@ -391,8 +465,10 @@ final _tables = <_TableSync>[
   ),
   _TableSync(
     remote: 'fx_rates',
-    localRows: (db) async {
-      final rows = await db.select(db.fxRates).get();
+    localRowsSince: (db, since) async {
+      final rows = await (db.select(
+        db.fxRates,
+      )..where((t) => t.updatedAt.isBiggerOrEqualValue(since))).get();
       return [
         for (final r in rows)
           {
@@ -449,7 +525,7 @@ Future<List<Map<String, dynamic>>> exportLocalRowsForTest(
 ) {
   return _tables
       .singleWhere((syncTable) => syncTable.remote == table)
-      .localRows(db);
+      .localRowsSince(db, DateTime.utc(1970));
 }
 
 @visibleForTesting

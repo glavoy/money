@@ -54,6 +54,14 @@ class _SyncScreenState extends ConsumerState<SyncScreen> {
   }
 
   void _showSyncResult(SyncResult result) {
+    final message = _formatSyncResult(result);
+    setState(() {
+      _busy = false;
+      _status = message;
+    });
+  }
+
+  String _formatSyncResult(SyncResult result) {
     final details = result.tables
         .where((table) => table.pushed > 0 || table.pulled > 0)
         .map(
@@ -61,20 +69,25 @@ class _SyncScreenState extends ConsumerState<SyncScreen> {
               '${table.name}: pushed ${table.pushed}, pulled ${table.pulled}',
         )
         .join('\n');
-    setState(() {
-      _busy = false;
-      _status = result.ok
-          ? [
-              'Sync complete: pushed ${result.pushed}, pulled ${result.pulled} rows.',
-              if (details.isNotEmpty) details,
-            ].join('\n')
-          : 'Sync failed: ${result.error}';
-    });
+    return result.ok
+        ? [
+            'Sync complete: pushed ${result.pushed}, pulled ${result.pulled} rows.',
+            if (details.isNotEmpty) details,
+          ].join('\n')
+        : 'Sync failed: ${result.error}';
   }
 
   @override
   Widget build(BuildContext context) {
-    final signedIn = ref.read(syncServiceProvider).isSignedIn;
+    ref.watch(syncStateProvider);
+    final syncService = ref.watch(syncServiceProvider);
+    final signedIn = syncService.isSignedIn;
+    final status = syncService.isRunning
+        ? 'Syncing…'
+        : _status ??
+              (syncService.lastResult == null
+                  ? null
+                  : _formatSyncResult(syncService.lastResult!));
     return Scaffold(
       appBar: AppBar(title: const Text('Sync')),
       body: ListView(
@@ -113,17 +126,17 @@ class _SyncScreenState extends ConsumerState<SyncScreen> {
           ),
           const SizedBox(height: 8),
           OutlinedButton.icon(
-            onPressed: _busy || !ref.read(syncServiceProvider).isSignedIn
+            onPressed: _busy || syncService.isRunning || !signedIn
                 ? null
                 : _syncNow,
             icon: const Icon(Icons.sync),
             label: const Text('Sync now'),
           ),
-          if (_status != null)
+          if (status != null)
             Padding(
               padding: const EdgeInsets.only(top: 16),
               child: Text(
-                _status!,
+                status,
                 style: Theme.of(context).textTheme.bodyMedium,
               ),
             ),
