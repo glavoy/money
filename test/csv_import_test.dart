@@ -143,4 +143,74 @@ void main() {
     expect(result.kind, 'unknown');
     expect(result.imported, 0);
   });
+
+  test(
+    'historical USD income import uses normal csv and leaves old rows alone',
+    () async {
+      final now = DateTime.utc(2026, 7, 17);
+      await db
+          .into(db.accounts)
+          .insert(
+            AccountsCompanion.insert(
+              id: 'acc-history-usd',
+              ledgerId: const Value(personalLedgerId),
+              name: 'Imported history USD',
+              type: AccountType.cash,
+              currency: 'USD',
+              archived: const Value(true),
+              createdAt: now,
+              updatedAt: now,
+            ),
+          );
+      await db.upsertTransaction(
+        TransactionsCompanion.insert(
+          id: 'imp-inc-200601',
+          ledgerId: const Value(personalLedgerId),
+          date: DateTime.utc(2006, 1, 1),
+          kind: TxKind.income,
+          amount: 3650000,
+          accountId: historyAccountId,
+          categoryId: const Value('cat-income-salary'),
+          createdAt: now,
+          updatedAt: now,
+        ),
+      );
+
+      final result = await importCsvContent(db, '''
+date,usd
+2006-01-01,"2,000.00"
+2006-02-01,"4,000.00"
+''', ledgerId: personalLedgerId);
+
+      expect(result.kind, 'income_usd');
+      expect(result.imported, 2);
+      expect(result.skipped, 0);
+
+      final oldIncome = await (db.select(
+        db.transactions,
+      )..where((t) => t.id.equals('imp-inc-200601'))).getSingle();
+      expect(oldIncome.deleted, isFalse);
+
+      final newIncome = await (db.select(
+        db.transactions,
+      )..where((t) => t.id.equals('imp-inc-usd-200601'))).getSingle();
+      expect(newIncome.accountId, 'acc-history-usd');
+      expect(newIncome.amount, 2000);
+      expect(newIncome.deleted, isFalse);
+    },
+  );
+
+  test(
+    'historical USD income import requires the hidden USD account',
+    () async {
+      final result = await importHistoricalUsdIncomeCsv(
+        db,
+        'date,usd\n2006-01-01,"2,000.00"\n',
+        ledgerId: personalLedgerId,
+      );
+
+      expect(result.kind, 'income_usd_missing_account');
+      expect(result.imported, 0);
+    },
+  );
 }

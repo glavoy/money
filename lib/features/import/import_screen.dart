@@ -68,6 +68,52 @@ class _ImportScreenState extends ConsumerState<ImportScreen> {
     }
   }
 
+  Future<void> _pickAndImportHistoricalUsdIncome() async {
+    setState(() {
+      _busy = true;
+      _log.clear();
+    });
+    try {
+      final picked = await file_picker.FilePicker.pickFiles(
+        dialogTitle: 'Choose income_usd.csv',
+        allowMultiple: false,
+        type: file_picker.FileType.custom,
+        allowedExtensions: ['csv'],
+        lockParentWindow: true,
+      );
+      if (picked == null || picked.files.isEmpty) {
+        _append('Import cancelled.');
+        return;
+      }
+      final file = picked.files.single;
+      final path = file.path;
+      if (path == null) {
+        _append('No readable file path returned.');
+        return;
+      }
+      _append('Importing ${file.name}…');
+      final result = await importHistoricalUsdIncomeCsv(
+        ref.read(databaseProvider),
+        await File(path).readAsString(encoding: utf8),
+        ledgerId: ref.read(selectedLedgerProvider),
+        onProgress: (done) => _append('  …$done rows'),
+      );
+      if (result.kind == 'income_usd_missing_account') {
+        _append('  Missing archived USD account named Imported history USD.');
+      } else {
+        _append(
+          '  historical USD income: ${result.imported} imported, ${result.skipped} skipped.',
+        );
+        ref.read(syncServiceProvider).syncSilently();
+      }
+      _append('Done.');
+    } catch (e) {
+      _append('Import failed: $e');
+    } finally {
+      setState(() => _busy = false);
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -93,6 +139,17 @@ class _ImportScreenState extends ConsumerState<ImportScreen> {
                     )
                   : const Icon(Icons.upload_file),
               label: Text(_busy ? 'Importing…' : 'Choose CSV files'),
+            ),
+            const SizedBox(height: 24),
+            const Text(
+              'Historical USD income imports income_usd.csv into '
+              'Imported history USD. Delete the old UGX income rows separately.',
+            ),
+            const SizedBox(height: 12),
+            OutlinedButton.icon(
+              onPressed: _busy ? null : _pickAndImportHistoricalUsdIncome,
+              icon: const Icon(Icons.attach_money),
+              label: const Text('Import income_usd.csv'),
             ),
             const SizedBox(height: 16),
             Expanded(

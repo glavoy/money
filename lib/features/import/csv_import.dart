@@ -24,6 +24,10 @@ Future<ImportResult> importCsvContent(
   required String ledgerId,
   void Function(int done)? onProgress,
 }) async {
+  if (_looksLikeHistoricalUsdIncome(content)) {
+    return importHistoricalUsdIncomeCsv(db, content, ledgerId: ledgerId);
+  }
+
   final rows = const CsvDecoder().convert(content);
   if (rows.isEmpty) return ImportResult('unknown', 0, 0);
   final header = [for (final h in rows.first) h.toString().trim()];
@@ -34,6 +38,11 @@ Future<ImportResult> importCsvContent(
     return _importFxRates(db, header, rows.skip(1), onProgress);
   }
   return ImportResult('unknown', 0, 0);
+}
+
+bool _looksLikeHistoricalUsdIncome(String content) {
+  final firstLine = content.split(RegExp(r'\r?\n')).first.trim();
+  return firstLine.toLowerCase() == 'date,usd';
 }
 
 String? _cell(Map<String, int> col, List row, String name) {
@@ -180,4 +189,85 @@ Future<ImportResult> _importFxRates(
   }
   onProgress?.call(imported);
   return ImportResult('fx_rates', imported, skipped);
+}
+
+Future<ImportResult> importHistoricalUsdIncomeCsv(
+  AppDatabase db,
+  String content, {
+  required String ledgerId,
+  void Function(int done)? onProgress,
+}) async {
+  final usdAccount = await _findHistoricalUsdAccount(db, ledgerId);
+  if (usdAccount == null) {
+    return ImportResult('income_usd_missing_account', 0, 0);
+  }
+
+  final now = DateTime.now().toUtc();
+  var imported = 0, skipped = 0;
+  final pending = <TransactionsCompanion>[];
+
+  Future<void> flush() async {
+    if (pending.isEmpty) return;
+    final copy = List.of(pending);
+    pending.clear();
+    await db.batch((b) {
+      for (final row in copy) {
+        b.insert(db.transactions, row, mode: InsertMode.insertOrReplace);
+      }
+    });
+    onProgress?.call(imported);
+  }
+
+  final rows = const CsvDecoder().convert(content);
+  if (rows.isEmpty) return ImportResult('income_usd', 0, 0);
+  final header = [for (final h in rows.first) h.toString().trim()];
+  final col = {for (var i = 0; i < header.length; i++) header[i]: i};
+
+  for (final row in rows.skip(1)) {
+    final dateRaw = _cell(col, row, 'date');
+    final amountRaw = _cell(col, row, 'usd');
+    final date = dateRaw == null ? null : DateTime.tryParse(dateRaw);
+    final amount = double.tryParse(amountRaw?.replaceAll(',', '') ?? '');
+    if (date == null || amount == null || amount <= 0) {
+      skipped++;
+      continue;
+    }
+    final day = DateTime.utc(date.year, date.month, date.day);
+    pending.add(
+      TransactionsCompanion.insert(
+        id: 'imp-inc-usd-${day.year}${day.month.toString().padLeft(2, '0')}',
+        ledgerId: Value(ledgerId),
+        date: day,
+        kind: TxKind.income,
+        amount: amount,
+        accountId: usdAccount.id,
+        categoryId: const Value('cat-income-salary'),
+        note: const Value('Historical USD income'),
+        createdAt: now,
+        updatedAt: now,
+      ),
+    );
+    imported++;
+    if (pending.length >= 2000) await flush();
+  }
+  await flush();
+  return ImportResult('income_usd', imported, skipped);
+}
+
+Future<Account?> _findHistoricalUsdAccount(
+  AppDatabase db,
+  String ledgerId,
+) async {
+  final accounts = await db.getAccounts(
+    ledgerId: ledgerId,
+    includeArchived: true,
+  );
+  for (final account in accounts) {
+    if (account.name == 'Imported history USD' &&
+        account.currency.toUpperCase() == 'USD' &&
+        !account.deleted) {
+      return account;
+    }
+  }
+  return null;
 }
