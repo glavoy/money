@@ -445,6 +445,16 @@ class AppDatabase extends _$AppDatabase {
     return q.get();
   }
 
+  /// Date of the oldest transaction, or null when the ledger is empty.
+  Future<DateTime?> getFirstTransactionDate({required String ledgerId}) async {
+    final q = select(transactions)
+      ..where((t) => t.deleted.equals(false) & t.ledgerId.equals(ledgerId))
+      ..orderBy([(t) => OrderingTerm.asc(t.date)])
+      ..limit(1);
+    final first = await q.getSingleOrNull();
+    return first?.date;
+  }
+
   Future<List<Transaction>> getTransactionsForExport({
     required String ledgerId,
   }) {

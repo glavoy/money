@@ -120,6 +120,50 @@ void main() {
     expect(report.expenseTotal, 0);
   });
 
+  test('all-time report buckets by year from the first transaction', () async {
+    await addExpense('e1', DateTime.utc(2024, 3, 10), 10000);
+    await addExpense('e2', DateTime.utc(2024, 8, 2), 5000, category: 'beer');
+    await addExpense('e3', DateTime.utc(2026, 2, 1), 20000);
+
+    final report = await computeReport(
+      db: db,
+      ledgerId: personalLedgerId,
+      period: ReportPeriod.all,
+      anchor: DateTime.now(),
+      currency: Currency.ugx,
+    );
+
+    final currentYear = DateTime.now().year;
+    expect(report.buckets.first.label, '2024');
+    expect(report.buckets.last.label, '$currentYear');
+    expect(report.buckets.length, currentYear - 2024 + 1);
+    expect(report.buckets.first.expense, 15000);
+    expect(report.buckets[2].expense, 20000);
+    expect(report.expenseTotal, 35000);
+    // The all-time view has no previous period to compare against.
+    expect(report.prevExpenseTotal, null);
+    expect(reportTitle(ReportPeriod.all, DateTime.now()), 'All years');
+    final anchor = DateTime.utc(2026, 5, 1);
+    expect(shiftAnchor(ReportPeriod.all, anchor, -1), anchor);
+  });
+
+  test('reports include previous-period totals for comparison', () async {
+    await addExpense('apr', DateTime.utc(2026, 4, 10), 40000);
+    await addExpense('may', DateTime.utc(2026, 5, 5), 30000);
+
+    final report = await computeReport(
+      db: db,
+      ledgerId: personalLedgerId,
+      period: ReportPeriod.month,
+      anchor: DateTime.utc(2026, 5, 1),
+      currency: Currency.ugx,
+    );
+
+    expect(report.expenseTotal, 30000);
+    expect(report.prevExpenseTotal, 40000);
+    expect(report.prevIncomeTotal, 0);
+  });
+
   test('transfers do not appear as spending', () async {
     final now = DateTime.now().toUtc();
     await db.upsertTransaction(

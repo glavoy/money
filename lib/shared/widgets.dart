@@ -57,9 +57,12 @@ class KindAvatar extends StatelessWidget {
 /// Horizontal magnitude bar for category breakdowns: a thin rounded track
 /// with a single-hue fill proportional to [fraction].
 class MagnitudeBar extends StatelessWidget {
-  const MagnitudeBar({super.key, required this.fraction});
+  const MagnitudeBar({super.key, required this.fraction, this.color});
 
   final double fraction;
+
+  /// Fill colour; defaults to the theme primary.
+  final Color? color;
 
   @override
   Widget build(BuildContext context) {
@@ -75,7 +78,7 @@ class MagnitudeBar extends StatelessWidget {
         widthFactor: fraction.clamp(0.0, 1.0),
         child: Container(
           decoration: BoxDecoration(
-            color: scheme.primary,
+            color: color ?? scheme.primary,
             borderRadius: BorderRadius.circular(6),
           ),
         ),

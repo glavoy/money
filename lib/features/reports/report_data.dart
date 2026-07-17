@@ -1,7 +1,7 @@
 import '../../data/database.dart';
 import '../../shared/currency.dart';
 
-enum ReportPeriod { month, quarter, year }
+enum ReportPeriod { month, quarter, year, all }
 
 class ReportBucket {
   ReportBucket(this.label, this.from, this.to);
@@ -21,6 +21,8 @@ class ReportData {
     required this.byCategory,
     required this.buckets,
     required this.missingRates,
+    this.prevExpenseTotal,
+    this.prevIncomeTotal,
   });
 
   final DateTime from;
@@ -31,17 +33,24 @@ class ReportData {
   /// Category name -> converted total, sorted descending.
   final List<MapEntry<String, double>> byCategory;
 
-  /// Sub-period totals (days of a month, months of a quarter/year).
+  /// Sub-period totals (days of a month, months of a quarter/year,
+  /// years of the all-time view).
   final List<ReportBucket> buckets;
 
   /// True when some transactions could not be converted (no FX rate at all).
   final bool missingRates;
+
+  /// Totals for the immediately preceding period, for "vs previous"
+  /// comparisons. Null for the all-time view (there is no previous).
+  final double? prevExpenseTotal;
+  final double? prevIncomeTotal;
 }
 
 ({DateTime from, DateTime to}) reportRange(
   ReportPeriod period,
-  DateTime anchor,
-) {
+  DateTime anchor, {
+  DateTime? earliest,
+}) {
   switch (period) {
     case ReportPeriod.month:
       return (
@@ -59,6 +68,13 @@ class ReportData {
         from: DateTime.utc(anchor.year, 1, 1),
         to: DateTime.utc(anchor.year, 12, 31),
       );
+    case ReportPeriod.all:
+      final now = DateTime.now();
+      final start = earliest ?? DateTime.utc(now.year);
+      return (
+        from: DateTime.utc(start.year),
+        to: DateTime.utc(now.year, 12, 31),
+      );
   }
 }
 
@@ -70,6 +86,8 @@ DateTime shiftAnchor(ReportPeriod period, DateTime anchor, int delta) {
       return DateTime.utc(anchor.year, anchor.month + 3 * delta, 1);
     case ReportPeriod.year:
       return DateTime.utc(anchor.year + delta, anchor.month, 1);
+    case ReportPeriod.all:
+      return anchor; // The all-time view has nothing to step through.
   }
 }
 
@@ -96,6 +114,8 @@ String reportTitle(ReportPeriod period, DateTime anchor) {
       return 'Q${(anchor.month - 1) ~/ 3 + 1} ${anchor.year}';
     case ReportPeriod.year:
       return '${anchor.year}';
+    case ReportPeriod.all:
+      return 'All years';
   }
 }
 
@@ -125,7 +145,52 @@ List<ReportBucket> _makeBuckets(
         m = DateTime.utc(m.year, m.month + 1, 1);
       }
       return buckets;
+    case ReportPeriod.all:
+      return [
+        for (var y = from.year; y <= to.year; y++)
+          ReportBucket('$y', DateTime.utc(y), DateTime.utc(y, 12, 31)),
+      ];
   }
+}
+
+/// Loads an FX table covering [from]..[to], with one earlier row as fallback.
+Future<FxTable> _loadFxTable(AppDatabase db, DateTime from, DateTime to) async {
+  final rates = await db.getRatesBetween(
+    from.subtract(const Duration(days: 45)),
+    to,
+  );
+  if (rates.isEmpty) {
+    final fallback = await db.getRateOn(from);
+    if (fallback != null) rates.add(fallback);
+  }
+  return FxTable(rates);
+}
+
+/// Converted expense/income totals for a range; used for the "vs previous
+/// period" comparison without building full buckets.
+Future<({double expense, double income})> _totalsBetween(
+  AppDatabase db, {
+  required String ledgerId,
+  required DateTime from,
+  required DateTime to,
+  required Currency currency,
+  required Map<String, Currency> accountCurrency,
+}) async {
+  final txs = await db.getTransactionsBetween(from, to, ledgerId: ledgerId);
+  final fx = await _loadFxTable(db, from, to);
+  double expense = 0, income = 0;
+  for (final t in txs) {
+    if (t.kind == TxKind.transfer) continue;
+    final fromCurrency = accountCurrency[t.accountId] ?? Currency.ugx;
+    final converted = fx.convert(t.amount, fromCurrency, currency, t.date);
+    if (converted == null) continue;
+    if (t.kind == TxKind.expense) {
+      expense += converted;
+    } else {
+      income += converted;
+    }
+  }
+  return (expense: expense, income: income);
 }
 
 Future<ReportData> computeReport({
@@ -135,7 +200,10 @@ Future<ReportData> computeReport({
   required DateTime anchor,
   required Currency currency,
 }) async {
-  final range = reportRange(period, anchor);
+  final earliest = period == ReportPeriod.all
+      ? await db.getFirstTransactionDate(ledgerId: ledgerId)
+      : null;
+  final range = reportRange(period, anchor, earliest: earliest);
   final txs = await db.getTransactionsBetween(
     range.from,
     range.to,
@@ -154,16 +222,7 @@ Future<ReportData> computeReport({
   };
   final categoryName = {for (final c in categories) c.id: c.name};
 
-  // FX table covering the range, with one earlier row as fallback.
-  final rates = await db.getRatesBetween(
-    range.from.subtract(const Duration(days: 45)),
-    range.to,
-  );
-  if (rates.isEmpty) {
-    final fallback = await db.getRateOn(range.from);
-    if (fallback != null) rates.add(fallback);
-  }
-  final fx = FxTable(rates);
+  final fx = await _loadFxTable(db, range.from, range.to);
 
   final buckets = _makeBuckets(period, range.from, range.to);
   final byCategory = <String, double>{};
@@ -200,6 +259,19 @@ Future<ReportData> computeReport({
   final sorted = byCategory.entries.toList()
     ..sort((a, b) => b.value.compareTo(a.value));
 
+  ({double expense, double income})? prev;
+  if (period != ReportPeriod.all) {
+    final prevRange = reportRange(period, shiftAnchor(period, anchor, -1));
+    prev = await _totalsBetween(
+      db,
+      ledgerId: ledgerId,
+      from: prevRange.from,
+      to: prevRange.to,
+      currency: currency,
+      accountCurrency: accountCurrency,
+    );
+  }
+
   return ReportData(
     from: range.from,
     to: range.to,
@@ -208,5 +280,7 @@ Future<ReportData> computeReport({
     byCategory: sorted,
     buckets: buckets,
     missingRates: missingRates,
+    prevExpenseTotal: prev?.expense,
+    prevIncomeTotal: prev?.income,
   );
 }
