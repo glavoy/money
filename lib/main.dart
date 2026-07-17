@@ -10,6 +10,7 @@ import 'features/reports/reports_screen.dart';
 import 'features/settings/settings_screen.dart';
 import 'features/transactions/transactions_screen.dart';
 import 'shared/providers.dart';
+import 'sync/fx_fetcher.dart';
 import 'sync/sync_service.dart';
 
 Future<void> main() async {
@@ -147,6 +148,7 @@ class _HomeShellState extends ConsumerState<HomeShell>
     // Fire-and-forget background sync on app start.
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _syncSilently();
+      _fetchTodaysRateIfMissing();
     });
     _periodicSyncTimer = Timer.periodic(
       _periodicSyncInterval,
@@ -170,6 +172,14 @@ class _HomeShellState extends ConsumerState<HomeShell>
 
   void _syncSilently() {
     ref.read(syncServiceProvider).syncSilently();
+  }
+
+  Future<void> _fetchTodaysRateIfMissing() async {
+    if (!ref.read(autoFetchTodayRateProvider)) return;
+    final error = await fetchTodaysRatesIfMissing(ref.read(databaseProvider));
+    if (error == null) {
+      ref.read(syncServiceProvider).syncSilently();
+    }
   }
 
   @override

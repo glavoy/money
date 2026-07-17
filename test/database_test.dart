@@ -502,6 +502,22 @@ void main() {
         expect(rate!.usdUgx, 3585);
       },
     );
+
+    test('exact date lookup does not fall back to older rates', () async {
+      final db = _openTestDb();
+      addTearDown(db.close);
+
+      await db.upsertRate(
+        date: DateTime.utc(2026, 7, 1),
+        usdUgx: 3600,
+        source: FxSource.api,
+        newId: () => 'fx-1',
+      );
+
+      expect(await db.getRateForDate(DateTime.utc(2026, 7, 1)), isA<FxRate>());
+      expect(await db.getRateForDate(DateTime.utc(2026, 7, 2)), isNull);
+      expect(await db.getRateOn(DateTime.utc(2026, 7, 2)), isA<FxRate>());
+    });
   });
 
   group('currency conversion', () {

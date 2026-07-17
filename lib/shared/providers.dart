@@ -80,6 +80,11 @@ final latestRateProvider = StreamProvider<FxRate?>((ref) {
   return ref.watch(databaseProvider).watchLatestRate();
 });
 
+/// Enables the one-off startup fetch for today's exchange rate.
+///
+/// Tests override this to avoid live network calls while pumping the app.
+final autoFetchTodayRateProvider = Provider<bool>((ref) => true);
+
 /// Currency used for reports and totals; persisted in app settings.
 class DisplayCurrencyNotifier extends Notifier<Currency> {
   static const _key = 'display_currency';

@@ -52,6 +52,11 @@ class _FxRatesScreenState extends ConsumerState<FxRatesScreen> {
                     );
                   },
           ),
+          IconButton(
+            tooltip: 'Fetch rates for a date',
+            icon: const Icon(Icons.event_available_outlined),
+            onPressed: _fetching ? null : () => _fetchForDate(context),
+          ),
         ],
       ),
       floatingActionButton: FloatingActionButton(
@@ -73,7 +78,7 @@ class _FxRatesScreenState extends ConsumerState<FxRatesScreen> {
               child: Padding(
                 padding: EdgeInsets.all(24),
                 child: Text(
-                  'No rates yet.\nFetch today\'s rates with the cloud button, enter one manually, or import history from raw_data.xlsx.',
+                  'No rates yet.\nFetch rates with the cloud or calendar button, enter one manually, or import x-rates.csv.',
                   textAlign: TextAlign.center,
                 ),
               ),
@@ -99,6 +104,33 @@ class _FxRatesScreenState extends ConsumerState<FxRatesScreen> {
             },
           );
         },
+      ),
+    );
+  }
+
+  Future<void> _fetchForDate(BuildContext context) async {
+    final picked = await showDatePicker(
+      context: context,
+      initialDate: DateTime.now(),
+      firstDate: DateTime(2000),
+      lastDate: DateTime.now(),
+    );
+    if (picked == null || !context.mounted) return;
+
+    final messenger = ScaffoldMessenger.of(context);
+    setState(() => _fetching = true);
+    final error = await fetchRatesForDate(ref.read(databaseProvider), picked);
+    if (error == null) {
+      ref.read(syncServiceProvider).syncSilently();
+    }
+    if (!mounted) return;
+    setState(() => _fetching = false);
+    messenger.showSnackBar(
+      SnackBar(
+        content: Text(
+          error ??
+              'Rates updated for ${DateFormat('d MMM yyyy').format(picked)}',
+        ),
       ),
     );
   }

@@ -488,6 +488,14 @@ class AppDatabase extends _$AppDatabase {
     return q.getSingleOrNull();
   }
 
+  Future<FxRate?> getRateForDate(DateTime date) async {
+    final day = DateTime.utc(date.year, date.month, date.day);
+    final q = select(fxRates)
+      ..where((r) => r.deleted.equals(false) & r.date.equals(day))
+      ..limit(1);
+    return q.getSingleOrNull();
+  }
+
   Future<List<FxRate>> getRatesBetween(DateTime from, DateTime to) {
     final q = select(fxRates)
       ..where(
