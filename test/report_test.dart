@@ -63,6 +63,7 @@ void main() {
 
     final report = await computeReport(
       db: db,
+      ledgerId: personalLedgerId,
       period: ReportPeriod.month,
       anchor: DateTime.utc(2026, 5, 1),
       currency: Currency.ugx,
@@ -89,6 +90,7 @@ void main() {
 
     final ugxReport = await computeReport(
       db: db,
+      ledgerId: personalLedgerId,
       period: ReportPeriod.month,
       anchor: DateTime.utc(2026, 5, 1),
       currency: Currency.ugx,
@@ -97,6 +99,7 @@ void main() {
 
     final usdReport = await computeReport(
       db: db,
+      ledgerId: personalLedgerId,
       period: ReportPeriod.month,
       anchor: DateTime.utc(2026, 5, 1),
       currency: Currency.usd,
@@ -108,6 +111,7 @@ void main() {
     await addExpense('e1', DateTime.utc(2026, 5, 2), 100, account: 'acc-visa');
     final report = await computeReport(
       db: db,
+      ledgerId: personalLedgerId,
       period: ReportPeriod.month,
       anchor: DateTime.utc(2026, 5, 1),
       currency: Currency.ugx,
@@ -133,6 +137,7 @@ void main() {
     );
     final report = await computeReport(
       db: db,
+      ledgerId: personalLedgerId,
       period: ReportPeriod.month,
       anchor: DateTime.utc(2026, 5, 1),
       currency: Currency.ugx,

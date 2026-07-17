@@ -33,8 +33,16 @@ class KindAvatar extends StatelessWidget {
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
     final (icon, background, foreground) = switch (kind) {
-      TxKind.income => (Icons.south_west, scheme.tertiaryContainer, scheme.onTertiaryContainer),
-      TxKind.transfer => (Icons.swap_horiz, scheme.surfaceContainerHighest, scheme.onSurfaceVariant),
+      TxKind.income => (
+        Icons.south_west,
+        scheme.tertiaryContainer,
+        scheme.onTertiaryContainer,
+      ),
+      TxKind.transfer => (
+        Icons.swap_horiz,
+        scheme.surfaceContainerHighest,
+        scheme.onSurfaceVariant,
+      ),
       _ => (Icons.north_east, scheme.errorContainer, scheme.onErrorContainer),
     };
     final radius = small ? 14.0 : 18.0;

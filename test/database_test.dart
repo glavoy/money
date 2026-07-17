@@ -38,8 +38,10 @@ void main() {
     test('seeds accounts and categories on create', () async {
       final db = _openTestDb();
       addTearDown(db.close);
+      final ledgers = await db.getLedgers(includeArchived: true);
       final accounts = await db.getAccounts(includeArchived: true);
       final categories = await db.getCategories(includeArchived: true);
+      expect(ledgers.single.name, 'Personal');
       expect(accounts.length, seedAccounts.length);
       expect(
         categories.length,
@@ -79,6 +81,68 @@ void main() {
         expect(isUntouchedSeedAccount(cash.copyWith(name: 'Wallet')), false);
       },
     );
+  });
+
+  group('ledgers', () {
+    test('accounts and categories are scoped by ledger', () async {
+      final db = _openTestDb();
+      addTearDown(db.close);
+      final now = DateTime.now().toUtc();
+      const secondLedgerId = 'ledger-rental';
+
+      await db
+          .into(db.ledgers)
+          .insert(
+            LedgersCompanion.insert(
+              id: secondLedgerId,
+              name: 'Rental',
+              createdAt: now,
+              updatedAt: now,
+            ),
+          );
+      await db
+          .into(db.accounts)
+          .insert(
+            AccountsCompanion.insert(
+              id: 'acc-rental-bank',
+              ledgerId: const Value(secondLedgerId),
+              name: 'Rental bank',
+              type: AccountType.bank,
+              currency: 'UGX',
+              createdAt: now,
+              updatedAt: now,
+            ),
+          );
+      await db
+          .into(db.categories)
+          .insert(
+            CategoriesCompanion.insert(
+              id: 'cat-rental-maintenance',
+              ledgerId: const Value(secondLedgerId),
+              name: 'Maintenance',
+              kind: CategoryKind.expense,
+              createdAt: now,
+              updatedAt: now,
+            ),
+          );
+
+      final personalAccounts = await db.getAccounts(
+        ledgerId: personalLedgerId,
+        includeArchived: true,
+      );
+      final rentalAccounts = await db.getAccounts(
+        ledgerId: secondLedgerId,
+        includeArchived: true,
+      );
+      final rentalCategories = await db.getCategories(
+        ledgerId: secondLedgerId,
+        includeArchived: true,
+      );
+
+      expect(personalAccounts.any((a) => a.id == 'acc-rental-bank'), false);
+      expect(rentalAccounts.single.name, 'Rental bank');
+      expect(rentalCategories.single.name, 'Maintenance');
+    });
   });
 
   group('balances', () {
@@ -130,7 +194,9 @@ void main() {
         ),
       );
 
-      final balances = await db.watchBalances(includeArchived: true).first;
+      final balances = await db
+          .watchBalances(ledgerId: personalLedgerId, includeArchived: true)
+          .first;
       final byId = {for (final b in balances) b.account.id: b.balance};
       expect(byId['acc-cash'], 100000 - 30000 + 50000 + 360000);
       expect(byId['acc-usd-bank'], -100);
@@ -150,7 +216,9 @@ void main() {
         ),
       );
       await db.softDeleteTransaction('t1');
-      final balances = await db.watchBalances(includeArchived: true).first;
+      final balances = await db
+          .watchBalances(ledgerId: personalLedgerId, includeArchived: true)
+          .first;
       final cash = balances.singleWhere((b) => b.account.id == 'acc-cash');
       expect(cash.balance, 0);
     });

@@ -56,7 +56,9 @@ class AccountsScreen extends ConsumerWidget {
                     '≈ ${formatMoney(convertWithRate(totalUgx, Currency.ugx, Currency.usd, latestRate) ?? 0, Currency.usd)}'
                     '${latestRate?.cadUgx != null ? '   ·   ${formatMoney(convertWithRate(totalUgx, Currency.ugx, Currency.cad, latestRate) ?? 0, Currency.cad)}' : ''}',
                     style: theme.textTheme.bodyMedium?.copyWith(
-                      color: theme.colorScheme.onPrimaryContainer.withValues(alpha: 0.8),
+                      color: theme.colorScheme.onPrimaryContainer.withValues(
+                        alpha: 0.8,
+                      ),
                     ),
                   ),
                 ],
@@ -65,7 +67,9 @@ class AccountsScreen extends ConsumerWidget {
                   Text(
                     'Excludes credit card · rate of ${DateFormat('d MMM yyyy').format(latestRate.date)}',
                     style: theme.textTheme.bodySmall?.copyWith(
-                      color: theme.colorScheme.onPrimaryContainer.withValues(alpha: 0.7),
+                      color: theme.colorScheme.onPrimaryContainer.withValues(
+                        alpha: 0.7,
+                      ),
                     ),
                   ),
                 ],
@@ -77,26 +81,29 @@ class AccountsScreen extends ConsumerWidget {
         for (final b in balances)
           Card(
             child: ListTile(
-              contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+              contentPadding: const EdgeInsets.symmetric(
+                horizontal: 16,
+                vertical: 4,
+              ),
               leading: CircleAvatar(
                 backgroundColor: theme.colorScheme.secondaryContainer,
                 foregroundColor: theme.colorScheme.onSecondaryContainer,
-                child: Icon(
-                  switch (b.account.type) {
-                    AccountType.cash => Icons.payments_outlined,
-                    AccountType.bank => Icons.account_balance_outlined,
-                    AccountType.mobileMoney => Icons.phone_android_outlined,
-                    _ => Icons.credit_card_outlined,
-                  },
-                  size: 20,
-                ),
+                child: Icon(switch (b.account.type) {
+                  AccountType.cash => Icons.payments_outlined,
+                  AccountType.bank => Icons.account_balance_outlined,
+                  AccountType.mobileMoney => Icons.phone_android_outlined,
+                  _ => Icons.credit_card_outlined,
+                }, size: 20),
               ),
-              title: Text(b.account.name,
-                  style: const TextStyle(fontWeight: FontWeight.w500)),
+              title: Text(
+                b.account.name,
+                style: const TextStyle(fontWeight: FontWeight.w500),
+              ),
               subtitle: b.account.currency == 'UGX'
                   ? null
                   : Text(
-                      '≈ ${formatMoney(convertWithRate(b.balance, CurrencyX.fromCode(b.account.currency), Currency.ugx, latestRate) ?? 0, Currency.ugx)}'),
+                      '≈ ${formatMoney(convertWithRate(b.balance, CurrencyX.fromCode(b.account.currency), Currency.ugx, latestRate) ?? 0, Currency.ugx)}',
+                    ),
               trailing: Text(
                 formatMoney(b.balance, CurrencyX.fromCode(b.account.currency)),
                 style: theme.textTheme.titleMedium?.copyWith(
@@ -136,7 +143,11 @@ class AccountLedgerScreen extends ConsumerWidget {
     return Scaffold(
       appBar: AppBar(title: Text(account.name)),
       body: StreamBuilder<List<Transaction>>(
-        stream: db.watchTransactions(accountId: account.id, limit: 2000),
+        stream: db.watchTransactions(
+          ledgerId: account.ledgerId,
+          accountId: account.id,
+          limit: 2000,
+        ),
         builder: (context, snapshot) {
           final txs = snapshot.data ?? [];
           // Compute running balance from oldest to newest.
@@ -155,13 +166,19 @@ class AccountLedgerScreen extends ConsumerWidget {
                   color: theme.colorScheme.secondaryContainer,
                   margin: EdgeInsets.zero,
                   child: Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 16,
+                      vertical: 14,
+                    ),
                     child: Row(
                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       children: [
-                        Text('Current balance',
-                            style: theme.textTheme.titleSmall?.copyWith(
-                                color: theme.colorScheme.onSecondaryContainer)),
+                        Text(
+                          'Current balance',
+                          style: theme.textTheme.titleSmall?.copyWith(
+                            color: theme.colorScheme.onSecondaryContainer,
+                          ),
+                        ),
                         Text(
                           formatMoney(running, currency),
                           style: theme.textTheme.titleLarge?.copyWith(
@@ -177,9 +194,12 @@ class AccountLedgerScreen extends ConsumerWidget {
               Expanded(
                 child: txs.isEmpty
                     ? Center(
-                        child: Text('No transactions on this account',
-                            style: theme.textTheme.bodyLarge?.copyWith(
-                                color: theme.colorScheme.onSurfaceVariant)),
+                        child: Text(
+                          'No transactions on this account',
+                          style: theme.textTheme.bodyLarge?.copyWith(
+                            color: theme.colorScheme.onSurfaceVariant,
+                          ),
+                        ),
                       )
                     : ListView.builder(
                         padding: const EdgeInsets.only(bottom: 16),
@@ -188,18 +208,21 @@ class AccountLedgerScreen extends ConsumerWidget {
                           final t = txs[i];
                           final effect = _effect(t, account.id);
                           final title = switch (t.kind) {
-                            TxKind.transfer => t.accountId == account.id
-                                ? 'To ${accountById[t.toAccountId]?.name ?? '?'}'
-                                : 'From ${accountById[t.accountId]?.name ?? '?'}',
+                            TxKind.transfer =>
+                              t.accountId == account.id
+                                  ? 'To ${accountById[t.toAccountId]?.name ?? '?'}'
+                                  : 'From ${accountById[t.accountId]?.name ?? '?'}',
                             _ => categoryById[t.categoryId]?.name ?? t.kind,
                           };
                           return ListTile(
                             dense: true,
                             title: Text(title),
-                            subtitle: Text([
-                              DateFormat('d MMM yyyy').format(t.date),
-                              if (t.note != null) t.note!,
-                            ].join(' · ')),
+                            subtitle: Text(
+                              [
+                                DateFormat('d MMM yyyy').format(t.date),
+                                if (t.note != null) t.note!,
+                              ].join(' · '),
+                            ),
                             trailing: Column(
                               mainAxisAlignment: MainAxisAlignment.center,
                               crossAxisAlignment: CrossAxisAlignment.end,
@@ -214,14 +237,19 @@ class AccountLedgerScreen extends ConsumerWidget {
                                   ),
                                 ),
                                 Text(
-                                  formatMoney(runningAfter[t.id] ?? 0, currency,
-                                      withCode: false),
+                                  formatMoney(
+                                    runningAfter[t.id] ?? 0,
+                                    currency,
+                                    withCode: false,
+                                  ),
                                   style: theme.textTheme.bodySmall?.copyWith(
-                                      color: theme.colorScheme.onSurfaceVariant),
+                                    color: theme.colorScheme.onSurfaceVariant,
+                                  ),
                                 ),
                               ],
                             ),
-                            onTap: () => showEditTransactionSheet(context, ref, t),
+                            onTap: () =>
+                                showEditTransactionSheet(context, ref, t),
                           );
                         },
                       ),

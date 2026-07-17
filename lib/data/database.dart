@@ -37,8 +37,23 @@ class FxSource {
   static const manual = 'manual';
 }
 
+class Ledgers extends Table {
+  TextColumn get id => text()();
+  TextColumn get name => text()();
+  BoolColumn get archived => boolean().withDefault(const Constant(false))();
+  IntColumn get sortOrder => integer().withDefault(const Constant(0))();
+  DateTimeColumn get createdAt => dateTime()();
+  DateTimeColumn get updatedAt => dateTime()();
+  BoolColumn get deleted => boolean().withDefault(const Constant(false))();
+
+  @override
+  Set<Column> get primaryKey => {id};
+}
+
 class Accounts extends Table {
   TextColumn get id => text()();
+  TextColumn get ledgerId =>
+      text().withDefault(const Constant(personalLedgerId))();
   TextColumn get name => text()();
   TextColumn get type => text()();
   TextColumn get currency => text()(); // UGX | USD | CAD
@@ -56,6 +71,8 @@ class Accounts extends Table {
 
 class Categories extends Table {
   TextColumn get id => text()();
+  TextColumn get ledgerId =>
+      text().withDefault(const Constant(personalLedgerId))();
   TextColumn get name => text()();
   TextColumn get kind => text()(); // expense | income
   IntColumn get sortOrder => integer().withDefault(const Constant(0))();
@@ -71,6 +88,8 @@ class Categories extends Table {
 
 class Transactions extends Table {
   TextColumn get id => text()();
+  TextColumn get ledgerId =>
+      text().withDefault(const Constant(personalLedgerId))();
   DateTimeColumn get date => dateTime()();
   TextColumn get kind => text()(); // expense | income | transfer
   RealColumn get amount => real()(); // in the account's currency
@@ -126,7 +145,7 @@ class AccountBalance {
 }
 
 @DriftDatabase(
-  tables: [Accounts, Categories, Transactions, FxRates, AppSettings],
+  tables: [Ledgers, Accounts, Categories, Transactions, FxRates, AppSettings],
 )
 class AppDatabase extends _$AppDatabase {
   AppDatabase(super.e);
@@ -134,7 +153,7 @@ class AppDatabase extends _$AppDatabase {
   AppDatabase.open() : super(_openConnection());
 
   @override
-  int get schemaVersion => 1;
+  int get schemaVersion => 2;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -142,15 +161,66 @@ class AppDatabase extends _$AppDatabase {
       await m.createAll();
       await seedDatabase(this);
     },
+    onUpgrade: (m, from, to) async {
+      if (from < 2) {
+        await m.createTable(ledgers);
+        await into(ledgers).insert(
+          LedgersCompanion.insert(
+            id: personalLedgerId,
+            name: 'Personal',
+            sortOrder: const Value(0),
+            createdAt: seedTimestamp,
+            updatedAt: seedTimestamp,
+          ),
+          mode: InsertMode.insertOrIgnore,
+        );
+        await m.addColumn(accounts, accounts.ledgerId);
+        await m.addColumn(categories, categories.ledgerId);
+        await m.addColumn(transactions, transactions.ledgerId);
+      }
+    },
   );
+
+  // ---------------------------------------------------------------------
+  // Ledgers
+  // ---------------------------------------------------------------------
+
+  Stream<List<Ledger>> watchLedgers({bool includeArchived = false}) {
+    final q = select(ledgers)
+      ..where((l) => l.deleted.equals(false))
+      ..orderBy([
+        (l) => OrderingTerm.asc(l.sortOrder),
+        (l) => OrderingTerm.asc(l.name),
+      ]);
+    if (!includeArchived) {
+      q.where((l) => l.archived.equals(false));
+    }
+    return q.watch();
+  }
+
+  Future<List<Ledger>> getLedgers({bool includeArchived = false}) {
+    final q = select(ledgers)
+      ..where((l) => l.deleted.equals(false))
+      ..orderBy([
+        (l) => OrderingTerm.asc(l.sortOrder),
+        (l) => OrderingTerm.asc(l.name),
+      ]);
+    if (!includeArchived) {
+      q.where((l) => l.archived.equals(false));
+    }
+    return q.get();
+  }
 
   // ---------------------------------------------------------------------
   // Accounts
   // ---------------------------------------------------------------------
 
-  Stream<List<Account>> watchAccounts({bool includeArchived = false}) {
+  Stream<List<Account>> watchAccounts({
+    required String ledgerId,
+    bool includeArchived = false,
+  }) {
     final q = select(accounts)
-      ..where((a) => a.deleted.equals(false))
+      ..where((a) => a.deleted.equals(false) & a.ledgerId.equals(ledgerId))
       ..orderBy([
         (a) => OrderingTerm.asc(a.sortOrder),
         (a) => OrderingTerm.asc(a.name),
@@ -161,13 +231,19 @@ class AppDatabase extends _$AppDatabase {
     return q.watch();
   }
 
-  Future<List<Account>> getAccounts({bool includeArchived = false}) {
+  Future<List<Account>> getAccounts({
+    String? ledgerId,
+    bool includeArchived = false,
+  }) {
     final q = select(accounts)
       ..where((a) => a.deleted.equals(false))
       ..orderBy([
         (a) => OrderingTerm.asc(a.sortOrder),
         (a) => OrderingTerm.asc(a.name),
       ]);
+    if (ledgerId != null) {
+      q.where((a) => a.ledgerId.equals(ledgerId));
+    }
     if (!includeArchived) {
       q.where((a) => a.archived.equals(false));
     }
@@ -175,7 +251,10 @@ class AppDatabase extends _$AppDatabase {
   }
 
   /// Watches computed balances for all non-deleted accounts.
-  Stream<List<AccountBalance>> watchBalances({bool includeArchived = false}) {
+  Stream<List<AccountBalance>> watchBalances({
+    required String ledgerId,
+    bool includeArchived = false,
+  }) {
     final query = customSelect(
       '''
       SELECT a.id AS account_id,
@@ -190,13 +269,18 @@ class AppDatabase extends _$AppDatabase {
                          WHERE t.to_account_id = a.id AND t.deleted = 0), 0)
              AS balance
       FROM accounts a
-      WHERE a.deleted = 0
+      WHERE a.deleted = 0 AND a.ledger_id = ?
       ''',
+      variables: [Variable<String>(ledgerId)],
       readsFrom: {accounts, transactions},
     );
     return query.watch().asyncMap((rows) async {
       final byId = {
-        for (final a in await getAccounts(includeArchived: true)) a.id: a,
+        for (final a in await getAccounts(
+          ledgerId: ledgerId,
+          includeArchived: true,
+        ))
+          a.id: a,
       };
       final result = <AccountBalance>[];
       for (final row in rows) {
@@ -220,11 +304,12 @@ class AppDatabase extends _$AppDatabase {
   // ---------------------------------------------------------------------
 
   Stream<List<Category>> watchCategories({
+    required String ledgerId,
     String? kind,
     bool includeArchived = false,
   }) {
     final q = select(categories)
-      ..where((c) => c.deleted.equals(false))
+      ..where((c) => c.deleted.equals(false) & c.ledgerId.equals(ledgerId))
       ..orderBy([
         (c) => OrderingTerm.asc(c.sortOrder),
         (c) => OrderingTerm.asc(c.name),
@@ -239,6 +324,7 @@ class AppDatabase extends _$AppDatabase {
   }
 
   Future<List<Category>> getCategories({
+    String? ledgerId,
     String? kind,
     bool includeArchived = false,
   }) {
@@ -248,6 +334,9 @@ class AppDatabase extends _$AppDatabase {
         (c) => OrderingTerm.asc(c.sortOrder),
         (c) => OrderingTerm.asc(c.name),
       ]);
+    if (ledgerId != null) {
+      q.where((c) => c.ledgerId.equals(ledgerId));
+    }
     if (kind != null) {
       q.where((c) => c.kind.equals(kind));
     }
@@ -286,6 +375,7 @@ class AppDatabase extends _$AppDatabase {
   // ---------------------------------------------------------------------
 
   Stream<List<Transaction>> watchTransactions({
+    String? ledgerId,
     DateTime? from,
     DateTime? to,
     String? accountId,
@@ -299,6 +389,7 @@ class AppDatabase extends _$AppDatabase {
         (t) => OrderingTerm.desc(t.date),
         (t) => OrderingTerm.desc(t.createdAt),
       ]);
+    if (ledgerId != null) q.where((t) => t.ledgerId.equals(ledgerId));
     if (limit != null) q.limit(limit);
     if (from != null) q.where((t) => t.date.isBiggerOrEqualValue(from));
     if (to != null) q.where((t) => t.date.isSmallerOrEqualValue(to));
@@ -312,11 +403,16 @@ class AppDatabase extends _$AppDatabase {
     return q.watch();
   }
 
-  Future<List<Transaction>> getTransactionsBetween(DateTime from, DateTime to) {
+  Future<List<Transaction>> getTransactionsBetween(
+    DateTime from,
+    DateTime to, {
+    required String ledgerId,
+  }) {
     final q = select(transactions)
       ..where(
         (t) =>
             t.deleted.equals(false) &
+            t.ledgerId.equals(ledgerId) &
             t.date.isBiggerOrEqualValue(from) &
             t.date.isSmallerOrEqualValue(to),
       )

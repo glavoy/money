@@ -130,14 +130,25 @@ List<ReportBucket> _makeBuckets(
 
 Future<ReportData> computeReport({
   required AppDatabase db,
+  required String ledgerId,
   required ReportPeriod period,
   required DateTime anchor,
   required Currency currency,
 }) async {
   final range = reportRange(period, anchor);
-  final txs = await db.getTransactionsBetween(range.from, range.to);
-  final accounts = await db.getAccounts(includeArchived: true);
-  final categories = await db.getCategories(includeArchived: true);
+  final txs = await db.getTransactionsBetween(
+    range.from,
+    range.to,
+    ledgerId: ledgerId,
+  );
+  final accounts = await db.getAccounts(
+    ledgerId: ledgerId,
+    includeArchived: true,
+  );
+  final categories = await db.getCategories(
+    ledgerId: ledgerId,
+    includeArchived: true,
+  );
   final accountCurrency = {
     for (final a in accounts) a.id: CurrencyX.fromCode(a.currency),
   };

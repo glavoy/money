@@ -182,7 +182,7 @@ class _HomeShellState extends ConsumerState<HomeShell>
       SettingsScreen(),
     ];
     return Scaffold(
-      appBar: AppBar(title: Text(_titles[_index])),
+      appBar: AppBar(title: _LedgerTitle(title: _titles[_index])),
       body: SafeArea(child: screens[_index]),
       bottomNavigationBar: NavigationBar(
         selectedIndex: _index,
@@ -213,6 +213,58 @@ class _HomeShellState extends ConsumerState<HomeShell>
             selectedIcon: Icon(Icons.settings),
             label: 'Settings',
           ),
+        ],
+      ),
+    );
+  }
+}
+
+class _LedgerTitle extends ConsumerWidget {
+  const _LedgerTitle({required this.title});
+
+  final String title;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final ledgers = ref.watch(ledgersProvider).value ?? [];
+    final selectedId = ref.watch(selectedLedgerProvider);
+    final selected = ledgers.where((l) => l.id == selectedId).firstOrNull;
+    final ledgerName = selected?.name ?? 'Personal';
+
+    return PopupMenuButton<String>(
+      tooltip: 'Switch ledger',
+      onSelected: (id) => ref.read(selectedLedgerProvider.notifier).set(id),
+      itemBuilder: (context) => [
+        for (final ledger in ledgers)
+          PopupMenuItem(
+            value: ledger.id,
+            child: Row(
+              children: [
+                Icon(
+                  ledger.id == selectedId ? Icons.check : Icons.book_outlined,
+                  size: 18,
+                ),
+                const SizedBox(width: 8),
+                Expanded(child: Text(ledger.name)),
+              ],
+            ),
+          ),
+      ],
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Flexible(child: Text(title)),
+          const SizedBox(width: 8),
+          Flexible(
+            child: Text(
+              ledgerName,
+              overflow: TextOverflow.ellipsis,
+              style: Theme.of(context).textTheme.labelLarge?.copyWith(
+                color: Theme.of(context).colorScheme.onSurfaceVariant,
+              ),
+            ),
+          ),
+          const Icon(Icons.expand_more, size: 18),
         ],
       ),
     );

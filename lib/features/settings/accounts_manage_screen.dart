@@ -12,6 +12,7 @@ class AccountsManageScreen extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final db = ref.watch(databaseProvider);
+    final ledgerId = ref.watch(selectedLedgerProvider);
     return Scaffold(
       appBar: AppBar(title: const Text('Manage accounts')),
       floatingActionButton: FloatingActionButton(
@@ -19,7 +20,7 @@ class AccountsManageScreen extends ConsumerWidget {
         child: const Icon(Icons.add),
       ),
       body: StreamBuilder<List<Account>>(
-        stream: db.watchAccounts(includeArchived: true),
+        stream: db.watchAccounts(ledgerId: ledgerId, includeArchived: true),
         builder: (context, snapshot) {
           final accounts = snapshot.data ?? [];
           return ListView(
@@ -156,9 +157,11 @@ class AccountsManageScreen extends ConsumerWidget {
                     ) ??
                     0;
                 final db = ref.read(databaseProvider);
+                final ledgerId = ref.read(selectedLedgerProvider);
                 final now = DateTime.now().toUtc();
                 if (existing == null) {
                   final count = (await db.getAccounts(
+                    ledgerId: ledgerId,
                     includeArchived: true,
                   )).length;
                   await db
@@ -166,6 +169,7 @@ class AccountsManageScreen extends ConsumerWidget {
                       .insert(
                         AccountsCompanion.insert(
                           id: uuid.v4(),
+                          ledgerId: Value(ledgerId),
                           name: name,
                           type: type,
                           currency: currency,

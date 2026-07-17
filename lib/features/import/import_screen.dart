@@ -35,6 +35,7 @@ class _ImportScreenState extends ConsumerState<ImportScreen> {
       _log.clear();
     });
     final db = ref.read(databaseProvider);
+    final ledgerId = ref.read(selectedLedgerProvider);
     try {
       for (final file in picked.files) {
         final path = file.path;
@@ -44,6 +45,7 @@ class _ImportScreenState extends ConsumerState<ImportScreen> {
         final result = await importCsvContent(
           db,
           content,
+          ledgerId: ledgerId,
           onProgress: (done) => _append('  …$done rows'),
         );
         _append(

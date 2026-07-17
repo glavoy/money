@@ -181,6 +181,49 @@ class _TableSync {
 
 final _tables = <_TableSync>[
   _TableSync(
+    remote: 'ledgers',
+    localChangedSince: (db, since) async {
+      final rows = await (db.select(
+        db.ledgers,
+      )..where((t) => t.updatedAt.isBiggerThanValue(since))).get();
+      return [
+        for (final r in rows)
+          {
+            'id': r.id,
+            'name': r.name,
+            'archived': r.archived,
+            'sort_order': r.sortOrder,
+            'created_at': _iso(r.createdAt),
+            'updated_at': _iso(r.updatedAt),
+            'deleted': r.deleted,
+          },
+      ];
+    },
+    applyRemote: (db, row) async {
+      final remoteUpdated = _date(row['updated_at']);
+      final local = await (db.select(
+        db.ledgers,
+      )..where((t) => t.id.equals(row['id'] as String))).getSingleOrNull();
+      if (local != null && !remoteUpdated.isAfter(local.updatedAt)) {
+        return false;
+      }
+      await db
+          .into(db.ledgers)
+          .insertOnConflictUpdate(
+            LedgersCompanion(
+              id: Value(row['id'] as String),
+              name: Value(row['name'] as String),
+              archived: Value(row['archived'] as bool? ?? false),
+              sortOrder: Value((row['sort_order'] as num?)?.toInt() ?? 0),
+              createdAt: Value(_date(row['created_at'])),
+              updatedAt: Value(remoteUpdated),
+              deleted: Value(row['deleted'] as bool? ?? false),
+            ),
+          );
+      return true;
+    },
+  ),
+  _TableSync(
     remote: 'accounts',
     localChangedSince: (db, since) async {
       final rows = await (db.select(
@@ -190,6 +233,7 @@ final _tables = <_TableSync>[
         for (final r in rows)
           {
             'id': r.id,
+            'ledger_id': r.ledgerId,
             'name': r.name,
             'type': r.type,
             'currency': r.currency,
@@ -218,6 +262,7 @@ final _tables = <_TableSync>[
           .insertOnConflictUpdate(
             AccountsCompanion(
               id: Value(row['id'] as String),
+              ledgerId: Value(row['ledger_id'] as String? ?? personalLedgerId),
               name: Value(row['name'] as String),
               type: Value(row['type'] as String),
               currency: Value(row['currency'] as String),
@@ -245,6 +290,7 @@ final _tables = <_TableSync>[
         for (final r in rows)
           {
             'id': r.id,
+            'ledger_id': r.ledgerId,
             'name': r.name,
             'kind': r.kind,
             'sort_order': r.sortOrder,
@@ -269,6 +315,7 @@ final _tables = <_TableSync>[
           .insertOnConflictUpdate(
             CategoriesCompanion(
               id: Value(row['id'] as String),
+              ledgerId: Value(row['ledger_id'] as String? ?? personalLedgerId),
               name: Value(row['name'] as String),
               kind: Value(row['kind'] as String),
               sortOrder: Value((row['sort_order'] as num?)?.toInt() ?? 0),
@@ -292,6 +339,7 @@ final _tables = <_TableSync>[
         for (final r in rows)
           {
             'id': r.id,
+            'ledger_id': r.ledgerId,
             'date': _iso(r.date),
             'kind': r.kind,
             'amount': r.amount,
@@ -319,6 +367,7 @@ final _tables = <_TableSync>[
           .insertOnConflictUpdate(
             TransactionsCompanion(
               id: Value(row['id'] as String),
+              ledgerId: Value(row['ledger_id'] as String? ?? personalLedgerId),
               date: Value(_date(row['date'])),
               kind: Value(row['kind'] as String),
               amount: Value(_num(row['amount'])!),

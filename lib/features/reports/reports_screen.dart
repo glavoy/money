@@ -23,6 +23,7 @@ class _ReportsScreenState extends ConsumerState<ReportsScreen> {
     final theme = Theme.of(context);
     final currency = ref.watch(displayCurrencyProvider);
     final db = ref.watch(databaseProvider);
+    final ledgerId = ref.watch(selectedLedgerProvider);
 
     return Column(
       children: [
@@ -32,8 +33,14 @@ class _ReportsScreenState extends ConsumerState<ReportsScreen> {
             children: [
               SegmentedButton<ReportPeriod>(
                 segments: const [
-                  ButtonSegment(value: ReportPeriod.month, label: Text('Month')),
-                  ButtonSegment(value: ReportPeriod.quarter, label: Text('Quarter')),
+                  ButtonSegment(
+                    value: ReportPeriod.month,
+                    label: Text('Month'),
+                  ),
+                  ButtonSegment(
+                    value: ReportPeriod.quarter,
+                    label: Text('Quarter'),
+                  ),
                   ButtonSegment(value: ReportPeriod.year, label: Text('Year')),
                 ],
                 selected: {_period},
@@ -44,21 +51,24 @@ class _ReportsScreenState extends ConsumerState<ReportsScreen> {
                 children: [
                   IconButton(
                     icon: const Icon(Icons.chevron_left),
-                    onPressed: () =>
-                        setState(() => _anchor = shiftAnchor(_period, _anchor, -1)),
+                    onPressed: () => setState(
+                      () => _anchor = shiftAnchor(_period, _anchor, -1),
+                    ),
                   ),
                   Expanded(
                     child: Text(
                       reportTitle(_period, _anchor),
                       textAlign: TextAlign.center,
-                      style: theme.textTheme.titleLarge
-                          ?.copyWith(fontWeight: FontWeight.w700),
+                      style: theme.textTheme.titleLarge?.copyWith(
+                        fontWeight: FontWeight.w700,
+                      ),
                     ),
                   ),
                   IconButton(
                     icon: const Icon(Icons.chevron_right),
-                    onPressed: () =>
-                        setState(() => _anchor = shiftAnchor(_period, _anchor, 1)),
+                    onPressed: () => setState(
+                      () => _anchor = shiftAnchor(_period, _anchor, 1),
+                    ),
                   ),
                   SegmentedButton<Currency>(
                     segments: const [
@@ -69,7 +79,10 @@ class _ReportsScreenState extends ConsumerState<ReportsScreen> {
                     selected: {currency},
                     showSelectedIcon: false,
                     style: const ButtonStyle(
-                      visualDensity: VisualDensity(horizontal: -3, vertical: -3),
+                      visualDensity: VisualDensity(
+                        horizontal: -3,
+                        vertical: -3,
+                      ),
                     ),
                     onSelectionChanged: (s) =>
                         ref.read(displayCurrencyProvider.notifier).set(s.first),
@@ -83,15 +96,24 @@ class _ReportsScreenState extends ConsumerState<ReportsScreen> {
           child: FutureBuilder<ReportData>(
             // Recomputes when period/anchor/currency change; the key also
             // makes edits elsewhere refresh on tab switch.
-            key: ValueKey('$_period-$_anchor-$currency'),
+            key: ValueKey('$ledgerId-$_period-$_anchor-$currency'),
             future: computeReport(
-                db: db, period: _period, anchor: _anchor, currency: currency),
+              db: db,
+              ledgerId: ledgerId,
+              period: _period,
+              anchor: _anchor,
+              currency: currency,
+            ),
             builder: (context, snapshot) {
               if (!snapshot.hasData) {
                 return const Center(child: CircularProgressIndicator());
               }
               final data = snapshot.data!;
-              return _ReportBody(data: data, currency: currency, period: _period);
+              return _ReportBody(
+                data: data,
+                currency: currency,
+                period: _period,
+              );
             },
           ),
         ),
@@ -101,7 +123,11 @@ class _ReportsScreenState extends ConsumerState<ReportsScreen> {
 }
 
 class _ReportBody extends StatelessWidget {
-  const _ReportBody({required this.data, required this.currency, required this.period});
+  const _ReportBody({
+    required this.data,
+    required this.currency,
+    required this.period,
+  });
 
   final ReportData data;
   final Currency currency;
@@ -110,8 +136,9 @@ class _ReportBody extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final maxCategory =
-        data.byCategory.isEmpty ? 0.0 : data.byCategory.first.value;
+    final maxCategory = data.byCategory.isEmpty
+        ? 0.0
+        : data.byCategory.first.value;
 
     return ListView(
       padding: const EdgeInsets.all(16),
@@ -121,7 +148,11 @@ class _ReportBody extends StatelessWidget {
             Expanded(
               child: _StatCard(
                 label: 'Spent',
-                value: formatMoney(data.expenseTotal, currency, withCode: false),
+                value: formatMoney(
+                  data.expenseTotal,
+                  currency,
+                  withCode: false,
+                ),
                 color: theme.colorScheme.error,
               ),
             ),
@@ -137,8 +168,11 @@ class _ReportBody extends StatelessWidget {
             Expanded(
               child: _StatCard(
                 label: 'Net',
-                value: formatMoney(data.incomeTotal - data.expenseTotal, currency,
-                    withCode: false),
+                value: formatMoney(
+                  data.incomeTotal - data.expenseTotal,
+                  currency,
+                  withCode: false,
+                ),
                 color: data.incomeTotal >= data.expenseTotal
                     ? theme.colorScheme.tertiary
                     : theme.colorScheme.error,
@@ -156,18 +190,27 @@ class _ReportBody extends StatelessWidget {
           ),
         const SizedBox(height: 20),
         SectionLabel(
-            period == ReportPeriod.month ? 'Spending by day' : 'Spending by month'),
+          period == ReportPeriod.month
+              ? 'Spending by day'
+              : 'Spending by month',
+        ),
         const SizedBox(height: 12),
-        SizedBox(height: 200, child: _BucketChart(data: data, currency: currency)),
+        SizedBox(
+          height: 200,
+          child: _BucketChart(data: data, currency: currency),
+        ),
         const SizedBox(height: 24),
         const SectionLabel('By category'),
         const SizedBox(height: 8),
         if (data.byCategory.isEmpty)
           Padding(
             padding: const EdgeInsets.symmetric(vertical: 8),
-            child: Text('No expenses in this period.',
-                style: theme.textTheme.bodyMedium
-                    ?.copyWith(color: theme.colorScheme.onSurfaceVariant)),
+            child: Text(
+              'No expenses in this period.',
+              style: theme.textTheme.bodyMedium?.copyWith(
+                color: theme.colorScheme.onSurfaceVariant,
+              ),
+            ),
           ),
         for (final entry in data.byCategory)
           Padding(
@@ -176,13 +219,16 @@ class _ReportBody extends StatelessWidget {
               children: [
                 SizedBox(
                   width: 96,
-                  child: Text(entry.key,
-                      overflow: TextOverflow.ellipsis,
-                      style: theme.textTheme.bodyMedium),
+                  child: Text(
+                    entry.key,
+                    overflow: TextOverflow.ellipsis,
+                    style: theme.textTheme.bodyMedium,
+                  ),
                 ),
                 Expanded(
                   child: MagnitudeBar(
-                      fraction: maxCategory == 0 ? 0 : entry.value / maxCategory),
+                    fraction: maxCategory == 0 ? 0 : entry.value / maxCategory,
+                  ),
                 ),
                 const SizedBox(width: 10),
                 SizedBox(
@@ -190,8 +236,9 @@ class _ReportBody extends StatelessWidget {
                   child: Text(
                     formatMoney(entry.value, currency, withCode: false),
                     textAlign: TextAlign.right,
-                    style: theme.textTheme.bodyMedium
-                        ?.copyWith(fontWeight: FontWeight.w600),
+                    style: theme.textTheme.bodyMedium?.copyWith(
+                      fontWeight: FontWeight.w600,
+                    ),
                   ),
                 ),
               ],
@@ -211,12 +258,16 @@ class _ReportBody extends StatelessWidget {
                   TableRow(
                     children: [
                       const SizedBox(),
-                      Text('Spent',
-                          textAlign: TextAlign.right,
-                          style: theme.textTheme.labelLarge),
-                      Text('Income',
-                          textAlign: TextAlign.right,
-                          style: theme.textTheme.labelLarge),
+                      Text(
+                        'Spent',
+                        textAlign: TextAlign.right,
+                        style: theme.textTheme.labelLarge,
+                      ),
+                      Text(
+                        'Income',
+                        textAlign: TextAlign.right,
+                        style: theme.textTheme.labelLarge,
+                      ),
                     ],
                   ),
                   for (final b in data.buckets)
@@ -226,10 +277,14 @@ class _ReportBody extends StatelessWidget {
                           padding: const EdgeInsets.symmetric(vertical: 4),
                           child: Text(b.label),
                         ),
-                        Text(formatMoney(b.expense, currency, withCode: false),
-                            textAlign: TextAlign.right),
-                        Text(formatMoney(b.income, currency, withCode: false),
-                            textAlign: TextAlign.right),
+                        Text(
+                          formatMoney(b.expense, currency, withCode: false),
+                          textAlign: TextAlign.right,
+                        ),
+                        Text(
+                          formatMoney(b.income, currency, withCode: false),
+                          textAlign: TextAlign.right,
+                        ),
                       ],
                     ),
                 ],
@@ -244,7 +299,11 @@ class _ReportBody extends StatelessWidget {
 }
 
 class _StatCard extends StatelessWidget {
-  const _StatCard({required this.label, required this.value, required this.color});
+  const _StatCard({
+    required this.label,
+    required this.value,
+    required this.color,
+  });
 
   final String label;
   final String value;
@@ -260,18 +319,22 @@ class _StatCard extends StatelessWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text(label.toUpperCase(),
-                style: theme.textTheme.labelSmall?.copyWith(
-                  color: theme.colorScheme.onSurfaceVariant,
-                  letterSpacing: 0.6,
-                )),
+            Text(
+              label.toUpperCase(),
+              style: theme.textTheme.labelSmall?.copyWith(
+                color: theme.colorScheme.onSurfaceVariant,
+                letterSpacing: 0.6,
+              ),
+            ),
             const SizedBox(height: 4),
             FittedBox(
               fit: BoxFit.scaleDown,
               child: Text(
                 value,
-                style: theme.textTheme.titleMedium
-                    ?.copyWith(color: color, fontWeight: FontWeight.w700),
+                style: theme.textTheme.titleMedium?.copyWith(
+                  color: color,
+                  fontWeight: FontWeight.w700,
+                ),
               ),
             ),
           ],
@@ -324,14 +387,17 @@ class _BucketChart extends StatelessWidget {
               reservedSize: 24,
               getTitlesWidget: (value, meta) {
                 final i = value.toInt();
-                if (i < 0 || i >= buckets.length) return const SizedBox.shrink();
+                if (i < 0 || i >= buckets.length) {
+                  return const SizedBox.shrink();
+                }
                 if (many && i % 5 != 0) return const SizedBox.shrink();
                 return Padding(
                   padding: const EdgeInsets.only(top: 4),
                   child: Text(
                     buckets[i].label,
-                    style: theme.textTheme.bodySmall
-                        ?.copyWith(color: theme.colorScheme.onSurfaceVariant),
+                    style: theme.textTheme.bodySmall?.copyWith(
+                      color: theme.colorScheme.onSurfaceVariant,
+                    ),
                   ),
                 );
               },
@@ -347,8 +413,9 @@ class _BucketChart extends StatelessWidget {
                   toY: buckets[i].expense,
                   color: theme.colorScheme.primary,
                   width: many ? 6 : 14,
-                  borderRadius:
-                      const BorderRadius.vertical(top: Radius.circular(4)),
+                  borderRadius: const BorderRadius.vertical(
+                    top: Radius.circular(4),
+                  ),
                 ),
               ],
             ),

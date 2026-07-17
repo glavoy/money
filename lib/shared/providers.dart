@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:uuid/uuid.dart';
 
 import '../data/database.dart';
+import '../data/seed.dart';
 import 'currency.dart';
 
 const uuid = Uuid();
@@ -12,26 +13,67 @@ final databaseProvider = Provider<AppDatabase>((ref) {
   throw UnimplementedError('databaseProvider must be overridden');
 });
 
+final ledgersProvider = StreamProvider<List<Ledger>>((ref) {
+  return ref.watch(databaseProvider).watchLedgers();
+});
+
+/// Ledger whose accounts, categories, transactions, and reports are visible.
+class SelectedLedgerNotifier extends Notifier<String> {
+  static const _key = 'selected_ledger_id';
+
+  @override
+  String build() {
+    ref.watch(databaseProvider).getSetting(_key).then((value) async {
+      final ledgers = await ref.read(databaseProvider).getLedgers();
+      if (ledgers.any((l) => l.id == value)) {
+        state = value!;
+      } else if (ledgers.isNotEmpty) {
+        state = ledgers.first.id;
+        await ref.read(databaseProvider).setSetting(_key, state);
+      }
+    });
+    return personalLedgerId;
+  }
+
+  void set(String ledgerId) {
+    state = ledgerId;
+    ref.read(databaseProvider).setSetting(_key, ledgerId);
+  }
+}
+
+final selectedLedgerProvider = NotifierProvider<SelectedLedgerNotifier, String>(
+  SelectedLedgerNotifier.new,
+);
+
 final accountsProvider = StreamProvider<List<Account>>((ref) {
-  return ref.watch(databaseProvider).watchAccounts();
+  final ledgerId = ref.watch(selectedLedgerProvider);
+  return ref.watch(databaseProvider).watchAccounts(ledgerId: ledgerId);
 });
 
 final balancesProvider = StreamProvider<List<AccountBalance>>((ref) {
-  return ref.watch(databaseProvider).watchBalances();
+  final ledgerId = ref.watch(selectedLedgerProvider);
+  return ref.watch(databaseProvider).watchBalances(ledgerId: ledgerId);
 });
 
 final expenseCategoriesProvider = StreamProvider<List<Category>>((ref) {
+  final ledgerId = ref.watch(selectedLedgerProvider);
   return ref
       .watch(databaseProvider)
-      .watchCategories(kind: CategoryKind.expense);
+      .watchCategories(ledgerId: ledgerId, kind: CategoryKind.expense);
 });
 
 final incomeCategoriesProvider = StreamProvider<List<Category>>((ref) {
-  return ref.watch(databaseProvider).watchCategories(kind: CategoryKind.income);
+  final ledgerId = ref.watch(selectedLedgerProvider);
+  return ref
+      .watch(databaseProvider)
+      .watchCategories(ledgerId: ledgerId, kind: CategoryKind.income);
 });
 
 final allCategoriesProvider = StreamProvider<List<Category>>((ref) {
-  return ref.watch(databaseProvider).watchCategories(includeArchived: true);
+  final ledgerId = ref.watch(selectedLedgerProvider);
+  return ref
+      .watch(databaseProvider)
+      .watchCategories(ledgerId: ledgerId, includeArchived: true);
 });
 
 final latestRateProvider = StreamProvider<FxRate?>((ref) {

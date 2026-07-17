@@ -18,13 +18,14 @@ class ImportResult {
 Future<ImportResult> importCsvContent(
   AppDatabase db,
   String content, {
+  required String ledgerId,
   void Function(int done)? onProgress,
 }) async {
   final rows = const CsvDecoder().convert(content);
   if (rows.isEmpty) return ImportResult('unknown', 0, 0);
   final header = [for (final h in rows.first) h.toString().trim()];
   if (header.contains('kind') && header.contains('account_id')) {
-    return _importTransactions(db, header, rows.skip(1), onProgress);
+    return _importTransactions(db, ledgerId, header, rows.skip(1), onProgress);
   }
   if (header.contains('usd_ugx')) {
     return _importFxRates(db, header, rows.skip(1), onProgress);
@@ -41,6 +42,7 @@ String? _cell(Map<String, int> col, List row, String name) {
 
 Future<ImportResult> _importTransactions(
   AppDatabase db,
+  String ledgerId,
   List<String> header,
   Iterable<List> rows,
   void Function(int done)? onProgress,
@@ -48,10 +50,18 @@ Future<ImportResult> _importTransactions(
   final col = {for (var i = 0; i < header.length; i++) header[i]: i};
   final now = DateTime.now().toUtc();
   final accountIds = {
-    for (final a in await db.getAccounts(includeArchived: true)) a.id,
+    for (final a in await db.getAccounts(
+      ledgerId: ledgerId,
+      includeArchived: true,
+    ))
+      a.id,
   };
   final categoryIds = {
-    for (final c in await db.getCategories(includeArchived: true)) c.id,
+    for (final c in await db.getCategories(
+      ledgerId: ledgerId,
+      includeArchived: true,
+    ))
+      c.id,
   };
 
   var imported = 0, skipped = 0;
@@ -91,6 +101,7 @@ Future<ImportResult> _importTransactions(
     pending.add(
       TransactionsCompanion.insert(
         id: id,
+        ledgerId: Value(ledgerId),
         date: DateTime.utc(date.year, date.month, date.day),
         kind: kind,
         amount: amount,

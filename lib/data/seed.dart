@@ -6,6 +6,7 @@ import 'database.dart';
 /// then syncing to the same Supabase project agree on the same rows.
 
 final seedTimestamp = DateTime.utc(2000);
+const personalLedgerId = 'ledger-personal';
 
 class SeedAccount {
   const SeedAccount(this.id, this.name, this.type, this.currency);
@@ -78,10 +79,22 @@ String seedCategoryId(String name, String kind) =>
 
 Future<void> seedDatabase(AppDatabase db) async {
   await db.batch((batch) {
+    batch.insert(
+      db.ledgers,
+      LedgersCompanion.insert(
+        id: personalLedgerId,
+        name: 'Personal',
+        sortOrder: const Value(0),
+        createdAt: seedTimestamp,
+        updatedAt: seedTimestamp,
+      ),
+      mode: InsertMode.insertOrIgnore,
+    );
     batch.insertAll(db.accounts, [
       for (var i = 0; i < seedAccounts.length; i++)
         AccountsCompanion.insert(
           id: seedAccounts[i].id,
+          ledgerId: const Value(personalLedgerId),
           name: seedAccounts[i].name,
           type: seedAccounts[i].type,
           currency: seedAccounts[i].currency,
@@ -95,6 +108,7 @@ Future<void> seedDatabase(AppDatabase db) async {
       for (var i = 0; i < seedExpenseCategories.length; i++)
         CategoriesCompanion.insert(
           id: seedCategoryId(seedExpenseCategories[i], CategoryKind.expense),
+          ledgerId: const Value(personalLedgerId),
           name: seedExpenseCategories[i],
           kind: CategoryKind.expense,
           sortOrder: Value(i),
@@ -104,6 +118,7 @@ Future<void> seedDatabase(AppDatabase db) async {
       for (var i = 0; i < seedIncomeCategories.length; i++)
         CategoriesCompanion.insert(
           id: seedCategoryId(seedIncomeCategories[i], CategoryKind.income),
+          ledgerId: const Value(personalLedgerId),
           name: seedIncomeCategories[i],
           kind: CategoryKind.income,
           sortOrder: Value(i),

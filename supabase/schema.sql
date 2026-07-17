@@ -5,8 +5,25 @@
 -- (email + password, "Auto confirm user" on). Sign in with that email and
 -- password in the app's Settings > Sync screen on each device.
 
+create table if not exists ledgers (
+  id text primary key,
+  name text not null,
+  archived boolean not null default false,
+  sort_order integer not null default 0,
+  created_at timestamptz not null,
+  updated_at timestamptz not null,
+  deleted boolean not null default false
+);
+
+insert into ledgers (
+  id, name, archived, sort_order, created_at, updated_at, deleted
+) values (
+  'ledger-personal', 'Personal', false, 0, '2000-01-01T00:00:00Z', '2000-01-01T00:00:00Z', false
+) on conflict (id) do nothing;
+
 create table if not exists accounts (
   id text primary key,
+  ledger_id text not null default 'ledger-personal',
   name text not null,
   type text not null,
   currency text not null,
@@ -21,6 +38,7 @@ create table if not exists accounts (
 
 create table if not exists categories (
   id text primary key,
+  ledger_id text not null default 'ledger-personal',
   name text not null,
   kind text not null,
   sort_order integer not null default 0,
@@ -33,6 +51,7 @@ create table if not exists categories (
 
 create table if not exists transactions (
   id text primary key,
+  ledger_id text not null default 'ledger-personal',
   date timestamptz not null,
   kind text not null,
   amount double precision not null,
@@ -46,6 +65,16 @@ create table if not exists transactions (
   deleted boolean not null default false
 );
 
+alter table accounts
+  add column if not exists ledger_id text not null default 'ledger-personal';
+alter table categories
+  add column if not exists ledger_id text not null default 'ledger-personal';
+alter table transactions
+  add column if not exists ledger_id text not null default 'ledger-personal';
+
+create index if not exists accounts_ledger_id_idx on accounts (ledger_id);
+create index if not exists categories_ledger_id_idx on categories (ledger_id);
+create index if not exists transactions_ledger_id_idx on transactions (ledger_id);
 create index if not exists transactions_updated_at_idx on transactions (updated_at);
 create index if not exists transactions_date_idx on transactions (date);
 
@@ -64,11 +93,14 @@ create table if not exists fx_rates (
 create index if not exists fx_rates_updated_at_idx on fx_rates (updated_at);
 
 -- Single-user app: any authenticated user gets full access.
+alter table ledgers enable row level security;
 alter table accounts enable row level security;
 alter table categories enable row level security;
 alter table transactions enable row level security;
 alter table fx_rates enable row level security;
 
+create policy "authenticated full access" on ledgers
+  for all to authenticated using (true) with check (true);
 create policy "authenticated full access" on accounts
   for all to authenticated using (true) with check (true);
 create policy "authenticated full access" on categories

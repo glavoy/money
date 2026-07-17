@@ -23,7 +23,8 @@ import 'package:money/shared/providers.dart';
 Future<void> _loadRealFonts() async {
   // FLUTTER_ROOT when set, else derived from the Dart executable inside the
   // SDK (…/flutter/bin/cache/dart-sdk/bin/dart.exe).
-  final flutterRoot = Platform.environment['FLUTTER_ROOT'] ??
+  final flutterRoot =
+      Platform.environment['FLUTTER_ROOT'] ??
       File(Platform.resolvedExecutable)
           .parent // bin
           .parent // dart-sdk
@@ -38,7 +39,9 @@ Future<void> _loadRealFonts() async {
     final name = f.uri.pathSegments.last.toLowerCase();
     if (name.startsWith('roboto-') && name.endsWith('.ttf')) {
       loader.addFont(
-        f.readAsBytes().then((b) => ByteData.view(Uint8List.fromList(b).buffer)),
+        f.readAsBytes().then(
+          (b) => ByteData.view(Uint8List.fromList(b).buffer),
+        ),
       );
     }
   }
@@ -57,40 +60,87 @@ Future<AppDatabase> _sampleDb() async {
     source: FxSource.api,
     newId: () => 'fx-preview',
   );
-  Future<void> tx(String id, int daysAgo, String kind, double amount,
-      String account, String? category,
-      {String? note, String? toAccount, double? toAmount}) async {
-    await db.upsertTransaction(TransactionsCompanion.insert(
-      id: id,
-      date: today.subtract(Duration(days: daysAgo)),
-      kind: kind,
-      amount: amount,
-      accountId: account,
-      categoryId: Value(category),
-      toAccountId: Value(toAccount),
-      toAmount: Value(toAmount),
-      note: Value(note),
-      createdAt: now,
-      updatedAt: now,
-    ));
+  Future<void> tx(
+    String id,
+    int daysAgo,
+    String kind,
+    double amount,
+    String account,
+    String? category, {
+    String? note,
+    String? toAccount,
+    double? toAmount,
+  }) async {
+    await db.upsertTransaction(
+      TransactionsCompanion.insert(
+        id: id,
+        date: today.subtract(Duration(days: daysAgo)),
+        kind: kind,
+        amount: amount,
+        accountId: account,
+        categoryId: Value(category),
+        toAccountId: Value(toAccount),
+        toAmount: Value(toAmount),
+        note: Value(note),
+        createdAt: now,
+        updatedAt: now,
+      ),
+    );
   }
 
   String cat(String name) => seedCategoryId(name, CategoryKind.expense);
   await tx('p1', 0, TxKind.expense, 44700, 'acc-cash', cat('food'));
-  await tx('p2', 0, TxKind.expense, 66100, 'acc-mtn', cat('food_r'),
-      note: 'Glovo lunch');
+  await tx(
+    'p2',
+    0,
+    TxKind.expense,
+    66100,
+    'acc-mtn',
+    cat('food_r'),
+    note: 'Glovo lunch',
+  );
   await tx('p3', 0, TxKind.expense, 25000, 'acc-cash', cat('beer'));
   await tx('p4', 1, TxKind.expense, 151000, 'acc-airtel', cat('petrol'));
-  await tx('p5', 1, TxKind.expense, 238300, 'acc-stanbic', cat('guard'),
-      note: 'Ultimate Security, June');
+  await tx(
+    'p5',
+    1,
+    TxKind.expense,
+    238300,
+    'acc-stanbic',
+    cat('guard'),
+    note: 'Ultimate Security, June',
+  );
   await tx('p6', 2, TxKind.expense, 62650, 'acc-cash', cat('water'));
   await tx('p7', 2, TxKind.expense, 12000, 'acc-cash', cat('motorcycle'));
-  await tx('p8', 3, TxKind.expense, 89.5, 'acc-visa', cat('recreation'),
-      note: 'Netflix + Spotify');
-  await tx('p9', 1, TxKind.income, 1250000, 'acc-stanbic',
-      seedCategoryId('Rent income', CategoryKind.income), note: 'Buziga');
-  await tx('p10', 4, TxKind.transfer, 2000, 'acc-usd-bank', null,
-      toAccount: 'acc-cash', toAmount: 7120000, note: r'Changed $2000 @ 3560');
+  await tx(
+    'p8',
+    3,
+    TxKind.expense,
+    89.5,
+    'acc-visa',
+    cat('recreation'),
+    note: 'Netflix + Spotify',
+  );
+  await tx(
+    'p9',
+    1,
+    TxKind.income,
+    1250000,
+    'acc-stanbic',
+    seedCategoryId('Rent income', CategoryKind.income),
+    note: 'Buziga',
+  );
+  await tx(
+    'p10',
+    4,
+    TxKind.transfer,
+    2000,
+    'acc-usd-bank',
+    null,
+    toAccount: 'acc-cash',
+    toAmount: 7120000,
+    note: r'Changed $2000 @ 3560',
+  );
   await tx('p11', 5, TxKind.expense, 203000, 'acc-mtn', cat('electricity'));
   await tx('p12', 6, TxKind.expense, 130000, 'acc-cash', cat('house'));
   return db;
@@ -99,8 +149,12 @@ Future<AppDatabase> _sampleDb() async {
 void main() {
   setUpAll(_loadRealFonts);
 
-  Future<void> preview(WidgetTester tester, AppDatabase db, int tabIndex,
-      String goldenName) async {
+  Future<void> preview(
+    WidgetTester tester,
+    AppDatabase db,
+    int tabIndex,
+    String goldenName,
+  ) async {
     tester.view.physicalSize = const Size(412 * 2, 915 * 2);
     tester.view.devicePixelRatio = 2.0;
     addTearDown(tester.view.reset);

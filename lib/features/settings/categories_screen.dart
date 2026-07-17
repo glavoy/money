@@ -99,9 +99,11 @@ class CategoriesScreen extends ConsumerWidget {
                 final name = nameController.text.trim();
                 if (name.isEmpty) return;
                 final db = ref.read(databaseProvider);
+                final ledgerId = ref.read(selectedLedgerProvider);
                 final now = DateTime.now().toUtc();
                 if (existing == null) {
                   final count = (await db.getCategories(
+                    ledgerId: ledgerId,
                     kind: kind,
                     includeArchived: true,
                   )).length;
@@ -110,6 +112,7 @@ class CategoriesScreen extends ConsumerWidget {
                       .insert(
                         CategoriesCompanion.insert(
                           id: uuid.v4(),
+                          ledgerId: Value(ledgerId),
                           name: name,
                           kind: kind,
                           sortOrder: Value(count),

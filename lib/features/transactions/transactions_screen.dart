@@ -34,6 +34,7 @@ class _TransactionsScreenState extends ConsumerState<TransactionsScreen> {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final db = ref.watch(databaseProvider);
+    final ledgerId = ref.watch(selectedLedgerProvider);
     final accounts = ref.watch(accountsProvider).value ?? [];
     final categories = ref.watch(allCategoriesProvider).value ?? [];
     final latestRate = ref.watch(latestRateProvider).value;
@@ -116,6 +117,7 @@ class _TransactionsScreenState extends ConsumerState<TransactionsScreen> {
         Expanded(
           child: StreamBuilder<List<Transaction>>(
             stream: db.watchTransactions(
+              ledgerId: ledgerId,
               from: range == null
                   ? null
                   : DateTime.utc(
@@ -514,8 +516,12 @@ Future<void> showEditTransactionSheet(
   Transaction tx,
 ) async {
   final db = ref.read(databaseProvider);
-  final accounts = await db.getAccounts(includeArchived: true);
+  final accounts = await db.getAccounts(
+    ledgerId: tx.ledgerId,
+    includeArchived: true,
+  );
   final categories = await db.getCategories(
+    ledgerId: tx.ledgerId,
     kind: tx.kind == TxKind.income ? CategoryKind.income : CategoryKind.expense,
   );
   if (!context.mounted) return;
@@ -647,6 +653,7 @@ Future<void> showEditTransactionSheet(
                 await db.upsertTransaction(
                   TransactionsCompanion.insert(
                     id: tx.id,
+                    ledgerId: Value(tx.ledgerId),
                     date: date,
                     kind: tx.kind,
                     amount: amount,

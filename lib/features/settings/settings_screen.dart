@@ -8,6 +8,7 @@ import '../import/import_screen.dart';
 import 'accounts_manage_screen.dart';
 import 'categories_screen.dart';
 import 'fx_rates_screen.dart';
+import 'ledgers_screen.dart';
 import 'sync_screen.dart';
 
 class SettingsScreen extends ConsumerWidget {
@@ -26,6 +27,15 @@ class SettingsScreen extends ConsumerWidget {
         const Padding(
           padding: EdgeInsets.only(left: 4, top: 16, bottom: 4),
           child: SectionLabel('Organise'),
+        ),
+        _SettingsTile(
+          icon: Icons.library_books_outlined,
+          title: 'Ledgers',
+          subtitle: 'Switch, add, or rename separate tracking sets',
+          onTap: () => Navigator.push(
+            context,
+            MaterialPageRoute(builder: (_) => const LedgersScreen()),
+          ),
         ),
         _SettingsTile(
           icon: Icons.category_outlined,

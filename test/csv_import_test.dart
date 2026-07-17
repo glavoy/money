@@ -1,5 +1,6 @@
 import 'package:drift/native.dart';
 import 'package:money/data/database.dart';
+import 'package:money/data/seed.dart';
 import 'package:money/features/import/csv_import.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -29,7 +30,11 @@ void main() {
   test(
     'imports transactions, skipping malformed and unknown-account rows',
     () async {
-      final result = await importCsvContent(db, _transactionsCsv);
+      final result = await importCsvContent(
+        db,
+        _transactionsCsv,
+        ledgerId: personalLedgerId,
+      );
       expect(result.kind, 'transactions');
       expect(result.imported, 4);
       expect(result.skipped, 2);
@@ -49,14 +54,18 @@ void main() {
   );
 
   test('re-importing is idempotent', () async {
-    await importCsvContent(db, _transactionsCsv);
-    await importCsvContent(db, _transactionsCsv);
+    await importCsvContent(db, _transactionsCsv, ledgerId: personalLedgerId);
+    await importCsvContent(db, _transactionsCsv, ledgerId: personalLedgerId);
     final txs = await db.select(db.transactions).get();
     expect(txs.length, 4);
   });
 
   test('imports fx rates and keeps the import source', () async {
-    final result = await importCsvContent(db, _fxCsv);
+    final result = await importCsvContent(
+      db,
+      _fxCsv,
+      ledgerId: personalLedgerId,
+    );
     expect(result.kind, 'fx_rates');
     expect(result.imported, 2);
     final rate = await db.getRateOn(DateTime.utc(2006, 1, 1));
@@ -66,7 +75,11 @@ void main() {
   });
 
   test('unrecognised header is rejected', () async {
-    final result = await importCsvContent(db, 'a,b,c\n1,2,3\n');
+    final result = await importCsvContent(
+      db,
+      'a,b,c\n1,2,3\n',
+      ledgerId: personalLedgerId,
+    );
     expect(result.kind, 'unknown');
     expect(result.imported, 0);
   });
