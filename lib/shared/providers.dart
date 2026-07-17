@@ -1,3 +1,4 @@
+import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:uuid/uuid.dart';
 
@@ -59,6 +60,44 @@ final displayCurrencyProvider =
     NotifierProvider<DisplayCurrencyNotifier, Currency>(
       DisplayCurrencyNotifier.new,
     );
+
+/// App theme preference; persisted in app settings.
+class ThemeModeNotifier extends Notifier<ThemeMode> {
+  static const _key = 'theme_mode';
+
+  @override
+  ThemeMode build() {
+    ref.watch(databaseProvider).getSetting(_key).then((value) {
+      if (value != null) state = _fromSetting(value);
+    });
+    return ThemeMode.system;
+  }
+
+  void set(ThemeMode mode) {
+    state = mode;
+    ref.read(databaseProvider).setSetting(_key, _toSetting(mode));
+  }
+
+  ThemeMode _fromSetting(String value) {
+    return switch (value) {
+      'light' => ThemeMode.light,
+      'dark' => ThemeMode.dark,
+      _ => ThemeMode.system,
+    };
+  }
+
+  String _toSetting(ThemeMode mode) {
+    return switch (mode) {
+      ThemeMode.light => 'light',
+      ThemeMode.dark => 'dark',
+      ThemeMode.system => 'system',
+    };
+  }
+}
+
+final themeModeProvider = NotifierProvider<ThemeModeNotifier, ThemeMode>(
+  ThemeModeNotifier.new,
+);
 
 /// Account preselected on the Quick Add screen; persisted in app settings.
 class LastAccountNotifier extends Notifier<String?> {

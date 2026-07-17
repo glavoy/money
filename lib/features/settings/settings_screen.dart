@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 
+import '../../shared/providers.dart';
 import '../../shared/widgets.dart';
 import '../import/import_screen.dart';
 import 'accounts_manage_screen.dart';
@@ -19,6 +20,11 @@ class SettingsScreen extends ConsumerWidget {
       children: [
         const Padding(
           padding: EdgeInsets.only(left: 4, bottom: 4),
+          child: SectionLabel('Appearance'),
+        ),
+        const _ThemeModeTile(),
+        const Padding(
+          padding: EdgeInsets.only(left: 4, top: 16, bottom: 4),
           child: SectionLabel('Organise'),
         ),
         _SettingsTile(
@@ -89,6 +95,55 @@ class SettingsScreen extends ConsumerWidget {
           },
         ),
       ],
+    );
+  }
+}
+
+class _ThemeModeTile extends ConsumerWidget {
+  const _ThemeModeTile();
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final mode = ref.watch(themeModeProvider);
+    final scheme = Theme.of(context).colorScheme;
+    return Card(
+      child: ListTile(
+        leading: CircleAvatar(
+          backgroundColor: scheme.secondaryContainer,
+          foregroundColor: scheme.onSecondaryContainer,
+          child: const Icon(Icons.contrast, size: 20),
+        ),
+        title: const Text(
+          'Theme',
+          style: TextStyle(fontWeight: FontWeight.w500),
+        ),
+        subtitle: Padding(
+          padding: const EdgeInsets.only(top: 8),
+          child: SegmentedButton<ThemeMode>(
+            segments: const [
+              ButtonSegment(
+                value: ThemeMode.system,
+                icon: Icon(Icons.brightness_auto_outlined),
+                label: Text('System'),
+              ),
+              ButtonSegment(
+                value: ThemeMode.light,
+                icon: Icon(Icons.light_mode_outlined),
+                label: Text('Light'),
+              ),
+              ButtonSegment(
+                value: ThemeMode.dark,
+                icon: Icon(Icons.dark_mode_outlined),
+                label: Text('Dark'),
+              ),
+            ],
+            selected: {mode},
+            onSelectionChanged: (selected) {
+              ref.read(themeModeProvider.notifier).set(selected.single);
+            },
+          ),
+        ),
+      ),
     );
   }
 }
