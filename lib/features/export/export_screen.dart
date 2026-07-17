@@ -57,7 +57,23 @@ class _ExportScreenState extends ConsumerState<ExportScreen> {
         final transactions = await db.getTransactionsForExport(
           ledgerId: ledgerId,
         );
-        return transactionsToCsv(transactions);
+        final accounts = await db.getAccounts(
+          ledgerId: ledgerId,
+          includeArchived: true,
+        );
+        final categories = await db.getCategories(
+          ledgerId: ledgerId,
+          includeArchived: true,
+        );
+        return transactionsToCsv(
+          transactions,
+          accountNames: {
+            for (final account in accounts) account.id: account.name,
+          },
+          categoryNames: {
+            for (final category in categories) category.id: category.name,
+          },
+        );
       },
     );
   }

@@ -41,15 +41,32 @@ void main() {
     await db.softDeleteTransaction('tx-other-ledger');
 
     final rows = await db.getTransactionsForExport(ledgerId: personalLedgerId);
-    final csv = transactionsToCsv(rows);
+    final accounts = await db.getAccounts(
+      ledgerId: personalLedgerId,
+      includeArchived: true,
+    );
+    final categories = await db.getCategories(
+      ledgerId: personalLedgerId,
+      includeArchived: true,
+    );
+    final csv = transactionsToCsv(
+      rows,
+      accountNames: {for (final account in accounts) account.id: account.name},
+      categoryNames: {
+        for (final category in categories) category.id: category.name,
+      },
+    );
 
     expect(
       csv,
       contains(
-        'id,date,kind,amount,account_id,category_id,to_account_id,to_amount,note',
+        'id,date,kind,amount,account,category,to_account,to_amount,note',
       ),
     );
-    expect(csv, contains('tx-1,2026-07-17,expense,12000.0'));
+    expect(csv, contains('tx-1,2026-07-17,expense,12000.0,Imported history'));
+    expect(csv, contains('food'));
+    expect(csv, isNot(contains(historyAccountId)));
+    expect(csv, isNot(contains('cat-expense-food')));
     expect(csv, contains('"Lunch, with comma"'));
     expect(csv, isNot(contains('tx-other-ledger')));
   });

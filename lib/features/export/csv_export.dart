@@ -5,16 +5,20 @@ import '../../data/database.dart';
 const transactionsExportFileName = 'transactions.csv';
 const fxRatesExportFileName = 'fx_rates.csv';
 
-String transactionsToCsv(List<Transaction> transactions) {
+String transactionsToCsv(
+  List<Transaction> transactions, {
+  required Map<String, String> accountNames,
+  required Map<String, String> categoryNames,
+}) {
   final rows = <List<Object?>>[
     [
       'id',
       'date',
       'kind',
       'amount',
-      'account_id',
-      'category_id',
-      'to_account_id',
+      'account',
+      'category',
+      'to_account',
       'to_amount',
       'note',
     ],
@@ -24,9 +28,13 @@ String transactionsToCsv(List<Transaction> transactions) {
         _dateOnly(tx.date),
         tx.kind,
         tx.amount,
-        tx.accountId,
-        tx.categoryId,
-        tx.toAccountId,
+        accountNames[tx.accountId] ?? tx.accountId,
+        tx.categoryId == null
+            ? null
+            : categoryNames[tx.categoryId] ?? tx.categoryId,
+        tx.toAccountId == null
+            ? null
+            : accountNames[tx.toAccountId] ?? tx.toAccountId,
         tx.toAmount,
         tx.note,
       ],
