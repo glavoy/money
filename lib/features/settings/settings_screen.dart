@@ -49,7 +49,7 @@ class SettingsScreen extends ConsumerWidget {
         _SettingsTile(
           icon: Icons.account_balance_wallet_outlined,
           title: 'Accounts',
-          subtitle: 'Manage accounts and opening balances',
+          subtitle: 'Add, edit, archive, or delete accounts',
           onTap: () => Navigator.push(
             context,
             MaterialPageRoute(builder: (_) => const AccountsManageScreen()),

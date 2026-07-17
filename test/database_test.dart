@@ -224,6 +224,62 @@ void main() {
     });
   });
 
+  group('accounts', () {
+    test('unused accounts can be soft-deleted', () async {
+      final db = _openTestDb();
+      addTearDown(db.close);
+      final now = DateTime.now().toUtc();
+
+      await db
+          .into(db.accounts)
+          .insert(
+            AccountsCompanion.insert(
+              id: 'acc-unused',
+              ledgerId: const Value(personalLedgerId),
+              name: 'Unused account',
+              type: AccountType.cash,
+              currency: 'UGX',
+              createdAt: now,
+              updatedAt: now,
+            ),
+          );
+
+      expect(await db.countTransactionsForAccount('acc-unused'), 0);
+      expect(await db.softDeleteAccountIfUnused('acc-unused'), true);
+
+      final accounts = await db.getAccounts(
+        ledgerId: personalLedgerId,
+        includeArchived: true,
+      );
+      expect(accounts.any((a) => a.id == 'acc-unused'), false);
+    });
+
+    test('used accounts cannot be soft-deleted', () async {
+      final db = _openTestDb();
+      addTearDown(db.close);
+
+      await db.upsertTransaction(
+        _tx(
+          id: 't1',
+          date: DateTime.utc(2026, 7, 1),
+          kind: TxKind.expense,
+          amount: 5000,
+          accountId: 'acc-cash',
+          categoryId: seedCategoryId('food', CategoryKind.expense),
+        ),
+      );
+
+      expect(await db.countTransactionsForAccount('acc-cash'), 1);
+      expect(await db.softDeleteAccountIfUnused('acc-cash'), false);
+
+      final accounts = await db.getAccounts(
+        ledgerId: personalLedgerId,
+        includeArchived: true,
+      );
+      expect(accounts.any((a) => a.id == 'acc-cash'), true);
+    });
+  });
+
   group('categories', () {
     test('unused categories can be soft-deleted', () async {
       final db = _openTestDb();

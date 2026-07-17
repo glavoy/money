@@ -26,38 +26,9 @@ class AccountsManageScreen extends ConsumerWidget {
           return ListView(
             children: [
               for (final a in accounts)
-                ListTile(
-                  title: Text(
-                    a.name,
-                    style: a.archived
-                        ? const TextStyle(
-                            decoration: TextDecoration.lineThrough,
-                          )
-                        : null,
-                  ),
-                  subtitle: Text(
-                    '${a.type.replaceAll('_', ' ')} · ${a.currency}${a.archived ? ' · archived' : ''}',
-                  ),
-                  trailing: IconButton(
-                    icon: Icon(
-                      a.archived
-                          ? Icons.unarchive_outlined
-                          : Icons.archive_outlined,
-                    ),
-                    tooltip: a.archived ? 'Unarchive' : 'Archive',
-                    onPressed: () async {
-                      await (db.update(
-                        db.accounts,
-                      )..where((t) => t.id.equals(a.id))).write(
-                        AccountsCompanion(
-                          archived: Value(!a.archived),
-                          updatedAt: Value(DateTime.now().toUtc()),
-                        ),
-                      );
-                      ref.read(syncServiceProvider).syncSilently();
-                    },
-                  ),
-                  onTap: () => _editAccount(context, ref, a),
+                _AccountTile(
+                  account: a,
+                  onEdit: () => _editAccount(context, ref, a),
                 ),
               const SizedBox(height: 80),
             ],
@@ -201,5 +172,140 @@ class AccountsManageScreen extends ConsumerWidget {
         ),
       ),
     );
+  }
+}
+
+class _AccountTile extends ConsumerWidget {
+  const _AccountTile({required this.account, required this.onEdit});
+
+  final Account account;
+  final VoidCallback onEdit;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final db = ref.watch(databaseProvider);
+    return FutureBuilder<int>(
+      future: db.countTransactionsForAccount(account.id),
+      builder: (context, snapshot) {
+        final transactionCount = snapshot.data;
+        final subtitleParts = [
+          account.type.replaceAll('_', ' '),
+          account.currency,
+          if (account.archived) 'archived',
+          if (transactionCount != null)
+            '$transactionCount ${transactionCount == 1 ? 'transaction' : 'transactions'}',
+        ];
+
+        return ListTile(
+          title: Text(
+            account.name,
+            style: account.archived
+                ? const TextStyle(decoration: TextDecoration.lineThrough)
+                : null,
+          ),
+          subtitle: Text(subtitleParts.join(' · ')),
+          trailing: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              IconButton(
+                icon: Icon(
+                  account.archived
+                      ? Icons.unarchive_outlined
+                      : Icons.archive_outlined,
+                ),
+                tooltip: account.archived ? 'Unarchive' : 'Archive',
+                onPressed: () => _setArchived(ref, !account.archived),
+              ),
+              IconButton(
+                icon: const Icon(Icons.delete_outline),
+                tooltip: 'Delete account',
+                onPressed: transactionCount == null
+                    ? null
+                    : () =>
+                          _deleteOrOfferArchive(context, ref, transactionCount),
+              ),
+            ],
+          ),
+          onTap: onEdit,
+        );
+      },
+    );
+  }
+
+  Future<void> _setArchived(WidgetRef ref, bool archived) async {
+    final db = ref.read(databaseProvider);
+    await (db.update(db.accounts)..where((t) => t.id.equals(account.id))).write(
+      AccountsCompanion(
+        archived: Value(archived),
+        updatedAt: Value(DateTime.now().toUtc()),
+      ),
+    );
+    ref.read(syncServiceProvider).syncSilently();
+  }
+
+  Future<void> _deleteOrOfferArchive(
+    BuildContext context,
+    WidgetRef ref,
+    int transactionCount,
+  ) async {
+    final db = ref.read(databaseProvider);
+    if (transactionCount == 0) {
+      final delete =
+          await showDialog<bool>(
+            context: context,
+            builder: (context) => AlertDialog(
+              title: const Text('Delete account?'),
+              content: Text(
+                '"${account.name}" is not used by any transactions. Delete it?',
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.pop(context, false),
+                  child: const Text('Cancel'),
+                ),
+                FilledButton(
+                  onPressed: () => Navigator.pop(context, true),
+                  child: const Text('Delete'),
+                ),
+              ],
+            ),
+          ) ??
+          false;
+      if (!delete) return;
+      final deleted = await db.softDeleteAccountIfUnused(account.id);
+      if (deleted) {
+        ref.read(syncServiceProvider).syncSilently();
+      }
+      return;
+    }
+
+    final archive =
+        await showDialog<bool>(
+          context: context,
+          builder: (context) => AlertDialog(
+            title: const Text('Account has history'),
+            content: Text(
+              '"${account.name}" is used by $transactionCount '
+              '${transactionCount == 1 ? 'transaction' : 'transactions'}. '
+              'Archive it instead so balances and reports stay intact.',
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(context, false),
+                child: const Text('Cancel'),
+              ),
+              FilledButton(
+                onPressed: account.archived
+                    ? null
+                    : () => Navigator.pop(context, true),
+                child: const Text('Archive'),
+              ),
+            ],
+          ),
+        ) ??
+        false;
+    if (archive) {
+      await _setArchived(ref, true);
+    }
   }
 }

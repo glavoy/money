@@ -7,6 +7,7 @@ import '../../data/database.dart';
 import '../../shared/currency.dart';
 import '../../shared/providers.dart';
 import '../../shared/widgets.dart';
+import '../../sync/sync_service.dart';
 
 class TransactionsScreen extends ConsumerStatefulWidget {
   const TransactionsScreen({super.key});
@@ -461,52 +462,87 @@ class _TransactionTile extends ConsumerWidget {
         child: Icon(Icons.delete, color: theme.colorScheme.onErrorContainer),
       ),
       confirmDismiss: (_) async {
-        return await showDialog<bool>(
-              context: context,
-              builder: (context) => AlertDialog(
-                title: const Text('Delete entry?'),
-                content: Text('$title — ${formatMoney(tx.amount, currency)}'),
-                actions: [
-                  TextButton(
-                    onPressed: () => Navigator.pop(context, false),
-                    child: const Text('Cancel'),
-                  ),
-                  FilledButton(
-                    onPressed: () => Navigator.pop(context, true),
-                    child: const Text('Delete'),
-                  ),
-                ],
-              ),
-            ) ??
-            false;
+        return confirmDeleteTransaction(
+          context,
+          title,
+          formatMoney(tx.amount, currency),
+        );
       },
-      onDismissed: (_) =>
-          ref.read(databaseProvider).softDeleteTransaction(tx.id),
+      onDismissed: (_) => deleteTransactionWithSync(ref, tx.id),
       child: ListTile(
         leading: KindAvatar(kind: tx.kind),
         title: Text(title, style: const TextStyle(fontWeight: FontWeight.w500)),
         subtitle: subtitleParts.isEmpty
             ? null
             : Text(subtitleParts.join(' · ')),
-        trailing: Text(
-          '${tx.kind == TxKind.expense
-              ? '−'
-              : tx.kind == TxKind.income
-              ? '+'
-              : ''}${formatMoney(tx.amount, currency)}',
-          style: theme.textTheme.bodyLarge?.copyWith(
-            color: switch (tx.kind) {
-              TxKind.income => theme.colorScheme.tertiary,
-              TxKind.expense => theme.colorScheme.error,
-              _ => theme.colorScheme.onSurfaceVariant,
-            },
-            fontWeight: FontWeight.w600,
-          ),
+        trailing: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(
+              '${tx.kind == TxKind.expense
+                  ? '−'
+                  : tx.kind == TxKind.income
+                  ? '+'
+                  : ''}${formatMoney(tx.amount, currency)}',
+              style: theme.textTheme.bodyLarge?.copyWith(
+                color: switch (tx.kind) {
+                  TxKind.income => theme.colorScheme.tertiary,
+                  TxKind.expense => theme.colorScheme.error,
+                  _ => theme.colorScheme.onSurfaceVariant,
+                },
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+            IconButton(
+              icon: const Icon(Icons.delete_outline),
+              tooltip: 'Delete entry',
+              onPressed: () async {
+                final confirmed = await confirmDeleteTransaction(
+                  context,
+                  title,
+                  formatMoney(tx.amount, currency),
+                );
+                if (confirmed) {
+                  await deleteTransactionWithSync(ref, tx.id);
+                }
+              },
+            ),
+          ],
         ),
         onTap: () => showEditTransactionSheet(context, ref, tx),
       ),
     );
   }
+}
+
+Future<bool> confirmDeleteTransaction(
+  BuildContext context,
+  String title,
+  String amount,
+) async {
+  return await showDialog<bool>(
+        context: context,
+        builder: (context) => AlertDialog(
+          title: const Text('Delete entry?'),
+          content: Text('$title — $amount'),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context, false),
+              child: const Text('Cancel'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.pop(context, true),
+              child: const Text('Delete'),
+            ),
+          ],
+        ),
+      ) ??
+      false;
+}
+
+Future<void> deleteTransactionWithSync(WidgetRef ref, String id) async {
+  await ref.read(databaseProvider).softDeleteTransaction(id);
+  ref.read(syncServiceProvider).syncSilently();
 }
 
 /// Bottom sheet to edit an existing transaction's fields.
@@ -644,6 +680,32 @@ Future<void> showEditTransactionSheet(
               decoration: const InputDecoration(labelText: 'Note'),
             ),
             const SizedBox(height: 16),
+            OutlinedButton.icon(
+              onPressed: () async {
+                final currency = CurrencyX.fromCode(
+                  accounts
+                          .where((a) => a.id == accountId)
+                          .firstOrNull
+                          ?.currency ??
+                      'UGX',
+                );
+                final confirmed = await confirmDeleteTransaction(
+                  context,
+                  tx.kind == TxKind.transfer ? 'Transfer' : 'Entry',
+                  formatMoney(tx.amount, currency),
+                );
+                if (!confirmed) return;
+                await deleteTransactionWithSync(ref, tx.id);
+                if (context.mounted) Navigator.pop(context);
+              },
+              icon: const Icon(Icons.delete_outline),
+              style: OutlinedButton.styleFrom(
+                foregroundColor: Theme.of(context).colorScheme.error,
+                minimumSize: const Size.fromHeight(48),
+              ),
+              label: const Text('Delete entry'),
+            ),
+            const SizedBox(height: 8),
             FilledButton(
               onPressed: () async {
                 final amount = double.tryParse(

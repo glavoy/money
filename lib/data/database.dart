@@ -299,6 +299,31 @@ class AppDatabase extends _$AppDatabase {
     });
   }
 
+  Future<int> countTransactionsForAccount(String accountId) async {
+    final query = selectOnly(transactions)
+      ..addColumns([transactions.id.count()])
+      ..where(
+        transactions.deleted.equals(false) &
+            (transactions.accountId.equals(accountId) |
+                transactions.toAccountId.equals(accountId)),
+      );
+    return await query
+        .map((row) => row.read(transactions.id.count()) ?? 0)
+        .getSingle();
+  }
+
+  Future<bool> softDeleteAccountIfUnused(String id) async {
+    final count = await countTransactionsForAccount(id);
+    if (count > 0) return false;
+    await (update(accounts)..where((a) => a.id.equals(id))).write(
+      AccountsCompanion(
+        deleted: const Value(true),
+        updatedAt: Value(DateTime.now().toUtc()),
+      ),
+    );
+    return true;
+  }
+
   // ---------------------------------------------------------------------
   // Categories
   // ---------------------------------------------------------------------

@@ -5,7 +5,11 @@ import 'package:intl/intl.dart';
 import '../../data/database.dart';
 import '../../shared/currency.dart';
 import '../../shared/providers.dart';
-import '../transactions/transactions_screen.dart' show showEditTransactionSheet;
+import '../transactions/transactions_screen.dart'
+    show
+        confirmDeleteTransaction,
+        deleteTransactionWithSync,
+        showEditTransactionSheet;
 
 class AccountsScreen extends ConsumerWidget {
   const AccountsScreen({super.key});
@@ -214,6 +218,8 @@ class AccountLedgerScreen extends ConsumerWidget {
                                   : 'From ${accountById[t.accountId]?.name ?? '?'}',
                             _ => categoryById[t.categoryId]?.name ?? t.kind,
                           };
+                          final amountText =
+                              '${effect >= 0 ? '+' : '−'}${formatMoney(effect.abs(), currency, withCode: false)}';
                           return ListTile(
                             dense: true,
                             title: Text(title),
@@ -223,28 +229,55 @@ class AccountLedgerScreen extends ConsumerWidget {
                                 if (t.note != null) t.note!,
                               ].join(' · '),
                             ),
-                            trailing: Column(
-                              mainAxisAlignment: MainAxisAlignment.center,
-                              crossAxisAlignment: CrossAxisAlignment.end,
+                            trailing: Row(
+                              mainAxisSize: MainAxisSize.min,
                               children: [
-                                Text(
-                                  '${effect >= 0 ? '+' : '−'}${formatMoney(effect.abs(), currency, withCode: false)}',
-                                  style: theme.textTheme.bodyMedium?.copyWith(
-                                    fontWeight: FontWeight.w600,
-                                    color: effect >= 0
-                                        ? theme.colorScheme.tertiary
-                                        : theme.colorScheme.error,
-                                  ),
+                                Column(
+                                  mainAxisAlignment: MainAxisAlignment.center,
+                                  crossAxisAlignment: CrossAxisAlignment.end,
+                                  children: [
+                                    Text(
+                                      amountText,
+                                      style: theme.textTheme.bodyMedium
+                                          ?.copyWith(
+                                            fontWeight: FontWeight.w600,
+                                            color: effect >= 0
+                                                ? theme.colorScheme.tertiary
+                                                : theme.colorScheme.error,
+                                          ),
+                                    ),
+                                    Text(
+                                      formatMoney(
+                                        runningAfter[t.id] ?? 0,
+                                        currency,
+                                        withCode: false,
+                                      ),
+                                      style: theme.textTheme.bodySmall
+                                          ?.copyWith(
+                                            color: theme
+                                                .colorScheme
+                                                .onSurfaceVariant,
+                                          ),
+                                    ),
+                                  ],
                                 ),
-                                Text(
-                                  formatMoney(
-                                    runningAfter[t.id] ?? 0,
-                                    currency,
-                                    withCode: false,
-                                  ),
-                                  style: theme.textTheme.bodySmall?.copyWith(
-                                    color: theme.colorScheme.onSurfaceVariant,
-                                  ),
+                                IconButton(
+                                  icon: const Icon(Icons.delete_outline),
+                                  tooltip: 'Delete entry',
+                                  onPressed: () async {
+                                    final confirmed =
+                                        await confirmDeleteTransaction(
+                                          context,
+                                          title,
+                                          amountText,
+                                        );
+                                    if (confirmed) {
+                                      await deleteTransactionWithSync(
+                                        ref,
+                                        t.id,
+                                      );
+                                    }
+                                  },
                                 ),
                               ],
                             ),
