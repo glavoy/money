@@ -4,6 +4,7 @@ import 'package:package_info_plus/package_info_plus.dart';
 
 import '../../shared/providers.dart';
 import '../../shared/widgets.dart';
+import '../export/export_screen.dart';
 import '../import/import_screen.dart';
 import 'accounts_manage_screen.dart';
 import 'categories_screen.dart';
@@ -84,6 +85,15 @@ class SettingsScreen extends ConsumerWidget {
           onTap: () => Navigator.push(
             context,
             MaterialPageRoute(builder: (_) => const ImportScreen()),
+          ),
+        ),
+        _SettingsTile(
+          icon: Icons.download_outlined,
+          title: 'Export data',
+          subtitle: 'Download transactions.csv and fx_rates.csv',
+          onTap: () => Navigator.push(
+            context,
+            MaterialPageRoute(builder: (_) => const ExportScreen()),
           ),
         ),
         const Padding(

@@ -445,6 +445,18 @@ class AppDatabase extends _$AppDatabase {
     return q.get();
   }
 
+  Future<List<Transaction>> getTransactionsForExport({
+    required String ledgerId,
+  }) {
+    final q = select(transactions)
+      ..where((t) => t.deleted.equals(false) & t.ledgerId.equals(ledgerId))
+      ..orderBy([
+        (t) => OrderingTerm.asc(t.date),
+        (t) => OrderingTerm.asc(t.createdAt),
+      ]);
+    return q.get();
+  }
+
   /// Inserts or replaces, bumping updated_at so sync picks it up.
   Future<void> upsertTransaction(TransactionsCompanion companion) async {
     await into(transactions).insertOnConflictUpdate(
@@ -484,6 +496,13 @@ class AppDatabase extends _$AppDatabase {
             r.date.isBiggerOrEqualValue(from) &
             r.date.isSmallerOrEqualValue(to),
       )
+      ..orderBy([(r) => OrderingTerm.asc(r.date)]);
+    return q.get();
+  }
+
+  Future<List<FxRate>> getFxRatesForExport() {
+    final q = select(fxRates)
+      ..where((r) => r.deleted.equals(false))
       ..orderBy([(r) => OrderingTerm.asc(r.date)]);
     return q.get();
   }
