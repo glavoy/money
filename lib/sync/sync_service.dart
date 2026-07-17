@@ -10,11 +10,6 @@ import '../data/seed.dart';
 import '../shared/providers.dart';
 import 'sync_config.dart';
 
-/// Settings keys used for sync configuration.
-class SyncKeys {
-  static const lastSyncPrefix = 'last_sync_'; // + table name
-}
-
 bool _supabaseInitialized = false;
 
 /// Called from main(); initializes Supabase when the user has configured it.
@@ -98,6 +93,11 @@ class SyncService {
   }
 
   /// Two-way sync of all tables. Last write wins on updated_at.
+  ///
+  /// Correctness does not depend on table-level cursors. Every sync pulls all
+  /// remote rows, applies newer rows locally, then uploads all local rows.
+  /// The data set is small enough that this is safer than a single cursor per
+  /// table, which can miss rows when two devices edit the same table.
   Future<SyncResult> sync() async {
     if (!isSignedIn) {
       return SyncResult(
@@ -114,21 +114,8 @@ class SyncService {
       var pushed = 0, pulled = 0;
       final tableResults = <SyncTableResult>[];
       final client = Supabase.instance.client;
-      // Capture the moment sync starts; anything written after this will be
-      // picked up next time.
-      final syncStart = DateTime.now().toUtc();
-
       for (final table in _tables) {
         var tablePushed = 0, tablePulled = 0;
-        final lastSyncRaw = await db.getSetting(
-          '${SyncKeys.lastSyncPrefix}${table.remote}',
-        );
-        final lastSync = lastSyncRaw == null
-            ? DateTime.utc(1970)
-            : DateTime.parse(lastSyncRaw).toUtc();
-
-        // Pull all remote rows in pages. This repairs earlier partial pulls
-        // where a cursor may have advanced after Supabase returned one page.
         final remoteRows = await _fetchAllRemoteRows(client, table.remote);
         for (final row in remoteRows) {
           if (await table.applyRemote(db, row)) {
@@ -137,18 +124,14 @@ class SyncService {
           }
         }
 
-        // Push local changes (including rows just pulled — harmless upsert).
-        final localRows = await table.localChangedSince(db, lastSync);
+        // Push local rows after remote rows are applied. If remote had the
+        // newer version of a row, local now has that newer version too.
+        final localRows = await table.localRows(db);
         if (localRows.isNotEmpty) {
           await client.from(table.remote).upsert(localRows);
           pushed += localRows.length;
           tablePushed += localRows.length;
         }
-
-        await db.setSetting(
-          '${SyncKeys.lastSyncPrefix}${table.remote}',
-          syncStart.toIso8601String(),
-        );
         tableResults.add(
           SyncTableResult(
             name: table.remote,
@@ -198,13 +181,12 @@ double? _num(dynamic v) => v == null ? null : (v as num).toDouble();
 class _TableSync {
   const _TableSync({
     required this.remote,
-    required this.localChangedSince,
+    required this.localRows,
     required this.applyRemote,
   });
 
   final String remote;
-  final Future<List<Map<String, dynamic>>> Function(AppDatabase, DateTime)
-  localChangedSince;
+  final Future<List<Map<String, dynamic>>> Function(AppDatabase) localRows;
 
   /// Returns true when the remote row replaced/created a local row.
   final Future<bool> Function(AppDatabase, Map<String, dynamic>) applyRemote;
@@ -213,10 +195,8 @@ class _TableSync {
 final _tables = <_TableSync>[
   _TableSync(
     remote: 'ledgers',
-    localChangedSince: (db, since) async {
-      final rows = await (db.select(
-        db.ledgers,
-      )..where((t) => t.updatedAt.isBiggerThanValue(since))).get();
+    localRows: (db) async {
+      final rows = await db.select(db.ledgers).get();
       return [
         for (final r in rows)
           {
@@ -256,10 +236,8 @@ final _tables = <_TableSync>[
   ),
   _TableSync(
     remote: 'accounts',
-    localChangedSince: (db, since) async {
-      final rows = await (db.select(
-        db.accounts,
-      )..where((t) => t.updatedAt.isBiggerThanValue(since))).get();
+    localRows: (db) async {
+      final rows = await db.select(db.accounts).get();
       return [
         for (final r in rows)
           {
@@ -313,10 +291,8 @@ final _tables = <_TableSync>[
   ),
   _TableSync(
     remote: 'categories',
-    localChangedSince: (db, since) async {
-      final rows = await (db.select(
-        db.categories,
-      )..where((t) => t.updatedAt.isBiggerThanValue(since))).get();
+    localRows: (db) async {
+      final rows = await db.select(db.categories).get();
       return [
         for (final r in rows)
           {
@@ -362,10 +338,8 @@ final _tables = <_TableSync>[
   ),
   _TableSync(
     remote: 'transactions',
-    localChangedSince: (db, since) async {
-      final rows = await (db.select(
-        db.transactions,
-      )..where((t) => t.updatedAt.isBiggerThanValue(since))).get();
+    localRows: (db) async {
+      final rows = await db.select(db.transactions).get();
       return [
         for (final r in rows)
           {
@@ -417,10 +391,8 @@ final _tables = <_TableSync>[
   ),
   _TableSync(
     remote: 'fx_rates',
-    localChangedSince: (db, since) async {
-      final rows = await (db.select(
-        db.fxRates,
-      )..where((t) => t.updatedAt.isBiggerThanValue(since))).get();
+    localRows: (db) async {
+      final rows = await db.select(db.fxRates).get();
       return [
         for (final r in rows)
           {
@@ -471,14 +443,13 @@ final _tables = <_TableSync>[
 ];
 
 @visibleForTesting
-Future<List<Map<String, dynamic>>> exportChangedRowsForTest(
+Future<List<Map<String, dynamic>>> exportLocalRowsForTest(
   AppDatabase db,
   String table,
-  DateTime since,
 ) {
   return _tables
       .singleWhere((syncTable) => syncTable.remote == table)
-      .localChangedSince(db, since);
+      .localRows(db);
 }
 
 @visibleForTesting

@@ -50,6 +50,10 @@ class _SyncScreenState extends ConsumerState<SyncScreen> {
       _status = 'Syncing…';
     });
     final result = await ref.read(syncServiceProvider).sync();
+    _showSyncResult(result);
+  }
+
+  void _showSyncResult(SyncResult result) {
     final details = result.tables
         .where((table) => table.pushed > 0 || table.pulled > 0)
         .map(

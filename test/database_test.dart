@@ -187,11 +187,7 @@ void main() {
 
       final exportedRows = <String, List<Map<String, dynamic>>>{};
       for (final table in ['ledgers', 'accounts', 'categories']) {
-        final rows = await exportChangedRowsForTest(
-          windowsDb,
-          table,
-          DateTime.utc(1970),
-        );
+        final rows = await exportLocalRowsForTest(windowsDb, table);
         exportedRows[table] = rows
             .where(
               (row) => row['ledger_id'] == ledgerId || row['id'] == ledgerId,
