@@ -76,6 +76,25 @@ final allCategoriesProvider = StreamProvider<List<Category>>((ref) {
       .watchCategories(ledgerId: ledgerId, includeArchived: true);
 });
 
+/// How often each category was used in the last 90 days, so Quick Add can
+/// surface the most-used ones first and tuck the rest behind "All".
+final categoryUsageProvider = StreamProvider<Map<String, int>>((ref) {
+  final ledgerId = ref.watch(selectedLedgerProvider);
+  final now = DateTime.now();
+  final from = DateTime.utc(now.year, now.month, now.day - 90);
+  return ref
+      .watch(databaseProvider)
+      .watchTransactions(ledgerId: ledgerId, from: from, limit: 2000)
+      .map((txs) {
+        final counts = <String, int>{};
+        for (final t in txs) {
+          final id = t.categoryId;
+          if (id != null) counts[id] = (counts[id] ?? 0) + 1;
+        }
+        return counts;
+      });
+});
+
 final latestRateProvider = StreamProvider<FxRate?>((ref) {
   return ref.watch(databaseProvider).watchLatestRate();
 });
