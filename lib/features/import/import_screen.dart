@@ -23,13 +23,6 @@ class _ImportScreenState extends ConsumerState<ImportScreen> {
   void _append(String line) => setState(() => _log.add(line));
 
   Future<void> _pickAndImport() async {
-    final picked = await file_picker.FilePicker.pickFiles(
-      allowMultiple: true,
-      type: file_picker.FileType.custom,
-      allowedExtensions: ['csv'],
-    );
-    if (picked == null || picked.files.isEmpty) return;
-
     setState(() {
       _busy = true;
       _log.clear();
@@ -37,6 +30,18 @@ class _ImportScreenState extends ConsumerState<ImportScreen> {
     final db = ref.read(databaseProvider);
     final ledgerId = ref.read(selectedLedgerProvider);
     try {
+      final picked = await file_picker.FilePicker.pickFiles(
+        dialogTitle: 'Choose CSV files',
+        allowMultiple: true,
+        type: file_picker.FileType.custom,
+        allowedExtensions: ['csv'],
+        lockParentWindow: true,
+      );
+      if (picked == null || picked.files.isEmpty) {
+        _append('Import cancelled.');
+        return;
+      }
+
       for (final file in picked.files) {
         final path = file.path;
         if (path == null) continue;
