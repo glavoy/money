@@ -44,12 +44,30 @@ final syncServiceProvider = riverpod.Provider<SyncService>((ref) {
 });
 
 class SyncResult {
-  SyncResult({required this.pushed, required this.pulled, this.error});
+  SyncResult({
+    required this.pushed,
+    required this.pulled,
+    this.tables = const [],
+    this.error,
+  });
   final int pushed;
   final int pulled;
+  final List<SyncTableResult> tables;
   final String? error;
 
   bool get ok => error == null;
+}
+
+class SyncTableResult {
+  const SyncTableResult({
+    required this.name,
+    required this.pushed,
+    required this.pulled,
+  });
+
+  final String name;
+  final int pushed;
+  final int pulled;
 }
 
 class SyncService {
@@ -94,12 +112,14 @@ class SyncService {
     _running = true;
     try {
       var pushed = 0, pulled = 0;
+      final tableResults = <SyncTableResult>[];
       final client = Supabase.instance.client;
       // Capture the moment sync starts; anything written after this will be
       // picked up next time.
       final syncStart = DateTime.now().toUtc();
 
       for (final table in _tables) {
+        var tablePushed = 0, tablePulled = 0;
         final lastSyncRaw = await db.getSetting(
           '${SyncKeys.lastSyncPrefix}${table.remote}',
         );
@@ -111,7 +131,10 @@ class SyncService {
         // where a cursor may have advanced after Supabase returned one page.
         final remoteRows = await _fetchAllRemoteRows(client, table.remote);
         for (final row in remoteRows) {
-          if (await table.applyRemote(db, row)) pulled++;
+          if (await table.applyRemote(db, row)) {
+            pulled++;
+            tablePulled++;
+          }
         }
 
         // Push local changes (including rows just pulled — harmless upsert).
@@ -119,14 +142,22 @@ class SyncService {
         if (localRows.isNotEmpty) {
           await client.from(table.remote).upsert(localRows);
           pushed += localRows.length;
+          tablePushed += localRows.length;
         }
 
         await db.setSetting(
           '${SyncKeys.lastSyncPrefix}${table.remote}',
           syncStart.toIso8601String(),
         );
+        tableResults.add(
+          SyncTableResult(
+            name: table.remote,
+            pushed: tablePushed,
+            pulled: tablePulled,
+          ),
+        );
       }
-      return SyncResult(pushed: pushed, pulled: pulled);
+      return SyncResult(pushed: pushed, pulled: pulled, tables: tableResults);
     } on Object catch (e) {
       return SyncResult(pushed: 0, pulled: 0, error: e.toString());
     } finally {
@@ -438,6 +469,28 @@ final _tables = <_TableSync>[
     },
   ),
 ];
+
+@visibleForTesting
+Future<List<Map<String, dynamic>>> exportChangedRowsForTest(
+  AppDatabase db,
+  String table,
+  DateTime since,
+) {
+  return _tables
+      .singleWhere((syncTable) => syncTable.remote == table)
+      .localChangedSince(db, since);
+}
+
+@visibleForTesting
+Future<bool> applyRemoteRowForTest(
+  AppDatabase db,
+  String table,
+  Map<String, dynamic> row,
+) {
+  return _tables
+      .singleWhere((syncTable) => syncTable.remote == table)
+      .applyRemote(db, row);
+}
 
 @visibleForTesting
 bool isUntouchedSeedAccount(Account account) {

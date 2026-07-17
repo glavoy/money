@@ -143,6 +143,92 @@ void main() {
       expect(rentalAccounts.single.name, 'Rental bank');
       expect(rentalCategories.single.name, 'Maintenance');
     });
+
+    test('sync mappers move empty ledger setup between databases', () async {
+      final windowsDb = _openTestDb();
+      final now = DateTime.now().toUtc();
+      const ledgerId = 'ledger-empty-setup';
+
+      await windowsDb
+          .into(windowsDb.ledgers)
+          .insert(
+            LedgersCompanion.insert(
+              id: ledgerId,
+              name: 'Empty setup',
+              createdAt: now,
+              updatedAt: now,
+            ),
+          );
+      await windowsDb
+          .into(windowsDb.accounts)
+          .insert(
+            AccountsCompanion.insert(
+              id: 'acc-empty-setup',
+              ledgerId: const Value(ledgerId),
+              name: 'Empty account',
+              type: AccountType.bank,
+              currency: 'UGX',
+              createdAt: now,
+              updatedAt: now,
+            ),
+          );
+      await windowsDb
+          .into(windowsDb.categories)
+          .insert(
+            CategoriesCompanion.insert(
+              id: 'cat-empty-setup',
+              ledgerId: const Value(ledgerId),
+              name: 'Empty category',
+              kind: CategoryKind.expense,
+              createdAt: now,
+              updatedAt: now,
+            ),
+          );
+
+      final exportedRows = <String, List<Map<String, dynamic>>>{};
+      for (final table in ['ledgers', 'accounts', 'categories']) {
+        final rows = await exportChangedRowsForTest(
+          windowsDb,
+          table,
+          DateTime.utc(1970),
+        );
+        exportedRows[table] = rows
+            .where(
+              (row) => row['ledger_id'] == ledgerId || row['id'] == ledgerId,
+            )
+            .toList();
+      }
+      await windowsDb.close();
+
+      final macDb = _openTestDb();
+      addTearDown(macDb.close);
+      for (final table in ['ledgers', 'accounts', 'categories']) {
+        for (final row in exportedRows[table]!) {
+          await applyRemoteRowForTest(macDb, table, row);
+        }
+      }
+
+      expect(
+        (await macDb.getLedgers(
+          includeArchived: true,
+        )).singleWhere((l) => l.id == ledgerId).name,
+        'Empty setup',
+      );
+      expect(
+        (await macDb.getAccounts(
+          ledgerId: ledgerId,
+          includeArchived: true,
+        )).single.name,
+        'Empty account',
+      );
+      expect(
+        (await macDb.getCategories(
+          ledgerId: ledgerId,
+          includeArchived: true,
+        )).single.name,
+        'Empty category',
+      );
+    });
   });
 
   group('balances', () {

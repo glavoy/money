@@ -50,10 +50,20 @@ class _SyncScreenState extends ConsumerState<SyncScreen> {
       _status = 'Syncing…';
     });
     final result = await ref.read(syncServiceProvider).sync();
+    final details = result.tables
+        .where((table) => table.pushed > 0 || table.pulled > 0)
+        .map(
+          (table) =>
+              '${table.name}: pushed ${table.pushed}, pulled ${table.pulled}',
+        )
+        .join('\n');
     setState(() {
       _busy = false;
       _status = result.ok
-          ? 'Sync complete: pushed ${result.pushed}, pulled ${result.pulled} rows.'
+          ? [
+              'Sync complete: pushed ${result.pushed}, pulled ${result.pulled} rows.',
+              if (details.isNotEmpty) details,
+            ].join('\n')
           : 'Sync failed: ${result.error}';
     });
   }
