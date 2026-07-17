@@ -14,8 +14,6 @@ import 'sync_config.dart';
 
 class SyncKeys {
   static const lastSyncPrefix = 'last_sync_';
-  static const strategyVersion = 'sync_strategy_version';
-  static const currentStrategyVersion = '2';
 }
 
 bool _supabaseInitialized = false;
@@ -123,9 +121,8 @@ class SyncService {
 
   /// Two-way sync of all tables. Last write wins on updated_at.
   ///
-  /// Normal sync is incremental with a small overlap window. When the sync
-  /// strategy changes, the first sync performs a full reconciliation once, then
-  /// stores the new strategy marker and returns to incremental syncing.
+  /// Sync is incremental with a small overlap window to avoid missing rows near
+  /// the previous sync boundary.
   Future<SyncResult> sync() async {
     if (!isSignedIn) {
       return SyncResult(
@@ -160,16 +157,13 @@ class SyncService {
       final tableResults = <SyncTableResult>[];
       final client = Supabase.instance.client;
       final syncStart = DateTime.now().toUtc();
-      final needsReconcile =
-          await db.getSetting(SyncKeys.strategyVersion) !=
-          SyncKeys.currentStrategyVersion;
 
       for (final table in _tables) {
         var tablePushed = 0, tablePulled = 0;
         final lastSyncRaw = await db.getSetting(
           '${SyncKeys.lastSyncPrefix}${table.remote}',
         );
-        final since = needsReconcile || lastSyncRaw == null
+        final since = lastSyncRaw == null
             ? DateTime.utc(1970)
             : DateTime.parse(lastSyncRaw).toUtc().subtract(_incrementalOverlap);
 
@@ -205,10 +199,6 @@ class SyncService {
           syncStart.toIso8601String(),
         );
       }
-      await db.setSetting(
-        SyncKeys.strategyVersion,
-        SyncKeys.currentStrategyVersion,
-      );
       return SyncResult(pushed: pushed, pulled: pulled, tables: tableResults);
     } on Object catch (e) {
       return SyncResult(pushed: 0, pulled: 0, error: e.toString());
