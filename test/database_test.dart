@@ -225,6 +225,58 @@ void main() {
         'Empty category',
       );
     });
+
+    test('remote row repairs equal-timestamp local ledger mismatch', () async {
+      final db = _openTestDb();
+      addTearDown(db.close);
+      final timestamp = DateTime.utc(2026, 7, 17, 6, 39, 30, 408, 914);
+      const ledgerId = 'ledger-target';
+      const accountId = 'acc-equal-timestamp';
+
+      await db
+          .into(db.ledgers)
+          .insert(
+            LedgersCompanion.insert(
+              id: ledgerId,
+              name: 'Target',
+              createdAt: timestamp,
+              updatedAt: timestamp,
+            ),
+          );
+      await db
+          .into(db.accounts)
+          .insert(
+            AccountsCompanion.insert(
+              id: accountId,
+              ledgerId: const Value(personalLedgerId),
+              name: 'Cash',
+              type: AccountType.cash,
+              currency: 'UGX',
+              createdAt: timestamp,
+              updatedAt: timestamp,
+            ),
+          );
+
+      await applyRemoteRowForTest(db, 'accounts', {
+        'id': accountId,
+        'ledger_id': ledgerId,
+        'name': 'Cash',
+        'type': AccountType.cash,
+        'currency': 'UGX',
+        'opening_balance': 0,
+        'opening_date': null,
+        'archived': false,
+        'sort_order': 0,
+        'created_at': timestamp.toIso8601String(),
+        'updated_at': timestamp.toIso8601String(),
+        'deleted': false,
+      });
+
+      final account = await (db.select(
+        db.accounts,
+      )..where((a) => a.id.equals(accountId))).getSingle();
+      expect(account.ledgerId, ledgerId);
+    });
   });
 
   group('balances', () {

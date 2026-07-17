@@ -215,7 +215,7 @@ final _tables = <_TableSync>[
       final local = await (db.select(
         db.ledgers,
       )..where((t) => t.id.equals(row['id'] as String))).getSingleOrNull();
-      if (local != null && !remoteUpdated.isAfter(local.updatedAt)) {
+      if (local != null && local.updatedAt.isAfter(remoteUpdated)) {
         return false;
       }
       await db
@@ -262,7 +262,7 @@ final _tables = <_TableSync>[
         db.accounts,
       )..where((t) => t.id.equals(row['id'] as String))).getSingleOrNull();
       if (local != null &&
-          !remoteUpdated.isAfter(local.updatedAt) &&
+          local.updatedAt.isAfter(remoteUpdated) &&
           !isUntouchedSeedAccount(local)) {
         return false;
       }
@@ -314,7 +314,7 @@ final _tables = <_TableSync>[
       final local = await (db.select(
         db.categories,
       )..where((t) => t.id.equals(row['id'] as String))).getSingleOrNull();
-      if (local != null && !remoteUpdated.isAfter(local.updatedAt)) {
+      if (local != null && local.updatedAt.isAfter(remoteUpdated)) {
         return false;
       }
       await db
@@ -364,7 +364,7 @@ final _tables = <_TableSync>[
       final local = await (db.select(
         db.transactions,
       )..where((t) => t.id.equals(row['id'] as String))).getSingleOrNull();
-      if (local != null && !remoteUpdated.isAfter(local.updatedAt)) {
+      if (local != null && local.updatedAt.isAfter(remoteUpdated)) {
         return false;
       }
       await db
@@ -413,7 +413,7 @@ final _tables = <_TableSync>[
       final local = await (db.select(
         db.fxRates,
       )..where((t) => t.id.equals(row['id'] as String))).getSingleOrNull();
-      if (local != null && !remoteUpdated.isAfter(local.updatedAt)) {
+      if (local != null && local.updatedAt.isAfter(remoteUpdated)) {
         return false;
       }
       // A row for the same date may exist locally under a different id
