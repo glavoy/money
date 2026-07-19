@@ -91,6 +91,11 @@ Tables: `Ledgers`, `Accounts`, `Categories`, `Transactions`, `FxRates`,
   unmodified seed account can be overwritten by a remote row even if the
   remote's `updatedAt` is older, since both devices independently created
   the same seed data at install time.
+- `supabase/schema.sql` defines the remote tables (snake_case columns
+  mirroring the drift camelCase ones) and is run once manually in the
+  Supabase SQL editor. When adding or changing columns on a synced table in
+  `lib/data/database.dart`, update `supabase/schema.sql` to match — there is
+  no migration tooling connecting the two.
 
 ### State management
 

@@ -82,6 +82,10 @@ class SyncService {
 
   static const _incrementalOverlap = Duration(minutes: 10);
 
+  /// Per-request timeout so a dead socket (e.g. Android suspending the app
+  /// mid-request) fails the sync instead of leaving it running forever.
+  static const requestTimeout = Duration(seconds: 30);
+
   final AppDatabase db;
   bool _rerunAfterCurrent = false;
   Future<SyncResult>? _currentSync;
@@ -183,7 +187,10 @@ class SyncService {
         // newer version of a row, local now has that newer version too.
         final localRows = await table.localRowsSince(db, since);
         if (localRows.isNotEmpty) {
-          await client.from(table.remote).upsert(localRows);
+          await client
+              .from(table.remote)
+              .upsert(localRows)
+              .timeout(requestTimeout);
           pushed += localRows.length;
           tablePushed += localRows.length;
         }
@@ -219,8 +226,11 @@ Future<List<Map<String, dynamic>>> _fetchRemoteRowsSince(
         .from(table)
         .select()
         .gte('updated_at', _iso(since))
-        .order('updated_at')
-        .range(from, from + pageSize - 1);
+        // Ascending, so rows written concurrently by another device land on
+        // later pages instead of shifting earlier pages under the pagination.
+        .order('updated_at', ascending: true)
+        .range(from, from + pageSize - 1)
+        .timeout(SyncService.requestTimeout);
     allRows.addAll([for (final row in page) Map<String, dynamic>.from(row)]);
 
     if (page.length < pageSize) {

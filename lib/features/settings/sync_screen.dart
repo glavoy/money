@@ -36,11 +36,11 @@ class _SyncScreenState extends ConsumerState<SyncScreen> {
         email: _usernameController.text.trim(),
         password: _passwordController.text,
       );
-      setState(() => _status = 'Signed in. You can sync now.');
+      if (mounted) setState(() => _status = 'Signed in. You can sync now.');
     } catch (e) {
-      setState(() => _status = 'Sign-in failed: $e');
+      if (mounted) setState(() => _status = 'Sign-in failed: $e');
     } finally {
-      setState(() => _busy = false);
+      if (mounted) setState(() => _busy = false);
     }
   }
 
@@ -54,6 +54,7 @@ class _SyncScreenState extends ConsumerState<SyncScreen> {
   }
 
   void _showSyncResult(SyncResult result) {
+    if (!mounted) return;
     final message = _formatSyncResult(result);
     setState(() {
       _busy = false;
