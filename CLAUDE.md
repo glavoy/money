@@ -76,14 +76,22 @@ Tables: `Ledgers`, `Accounts`, `Categories`, `Transactions`, `FxRates`,
   fx_rates) is synced independently and tracks two separate cursors in
   `AppSettings` (`last_sync_<table>` for push, `last_pull_<table>` for pull) —
   `AppSettings` itself is local-only and never synced.
-- Pulls filter/order on `server_updated_at`, a column Postgres stamps at
-  commit time via a trigger (`money_stamp_server_updated_at` in
-  `supabase/schema.sql`) that the client cannot influence. This is
-  deliberately separate from `updatedAt`: a device that's offline for any
-  length of time — minutes or days — is still guaranteed to see everything
-  it missed on its next pull, because no client clock or push delay can
-  place a row "behind" another device's pull cursor. `updatedAt` still
-  drives last-write-wins conflict resolution during apply. Pushes compare
+- Pulls use an exact keyset cursor — `(server_updated_at, id)` of the last
+  row processed, stored as `<iso>|<id>` — asking for rows strictly after
+  that point, not a time-window overlap. `server_updated_at` is stamped by
+  Postgres at commit time via a trigger (`money_stamp_server_updated_at` in
+  `supabase/schema.sql`) that the client cannot influence, so a device
+  offline for any length of time is still guaranteed to see everything it
+  missed. `updatedAt` still drives last-write-wins conflict resolution
+  during apply — only the incremental cursor uses `server_updated_at`. Do
+  not go back to a time-based overlap for pulls: a bulk backfill (e.g.
+  adding a column to existing rows) stamps many rows within the same few
+  seconds, and any fixed overlap wide enough to cover that cluster
+  re-matches the whole cluster on every subsequent sync forever, since the
+  bookmark can never advance past it. The pull bookmark is also
+  checkpointed after every page, not just once at the end, so an
+  interrupted catch-up (Android can suspend the app mid-sync) makes forward
+  progress instead of restarting from scratch each time. Pushes compare
   against this device's own `updatedAt` instead (`last_sync_<table>`,
   10-minute overlap) — safe, since a device always knows whether it has
   pushed its own row; there's no cross-device timing gap on that side.

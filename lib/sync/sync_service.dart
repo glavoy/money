@@ -20,12 +20,22 @@ class SyncKeys {
   /// pushed its own row — there's no cross-device timing gap on this side.
   static const lastSyncPrefix = 'last_sync_';
 
-  /// Pull bookmark: the point up to which remote rows have been fetched.
-  /// Compared against server_updated_at (stamped by Postgres on arrival,
-  /// never by the client), so a device catching up after any delay —
-  /// however long — is guaranteed to still find rows that arrived after
-  /// its last pull. A separate cursor from the push bookmark above because
-  /// the two compare against different clocks (server vs. client).
+  /// Pull bookmark: keyset cursor for how far remote rows have been
+  /// fetched, stored as `<server_updated_at ISO>|<id>`. Compared against
+  /// server_updated_at (stamped by Postgres on arrival, never by the
+  /// client), so a device catching up after any delay — however long — is
+  /// guaranteed to still find rows that arrived after its last pull. A
+  /// separate cursor from the push bookmark above because the two compare
+  /// against different clocks (server vs. client).
+  ///
+  /// This is an exact keyset cursor, not a time-window overlap: "give me
+  /// rows strictly after this (timestamp, id) pair," with the id breaking
+  /// ties on equal timestamps. A time-based overlap was tried first and
+  /// backfired badly — a bulk backfill (e.g. adding this column to existing
+  /// rows) stamps many rows within the same few seconds, and any fixed
+  /// overlap wide enough to cover that cluster re-matches the entire
+  /// cluster on every subsequent sync forever, since the bookmark can never
+  /// advance past it. A keyset cursor has no such window to get wrong.
   static const lastPullPrefix = 'last_pull_';
 }
 
@@ -97,12 +107,6 @@ class SyncService {
   /// timing gap to guard against (see [SyncKeys.lastSyncPrefix]) — this only
   /// cushions this device's own clock jitter between runs.
   static const _pushOverlap = Duration(minutes: 10);
-
-  /// Overlap for the pull cursor. Small, because server_updated_at is
-  /// assigned at commit time: the only residual risk is two transactions
-  /// committing out of the order their clock_timestamp() calls were made,
-  /// which is a sub-second race, not a multi-hour one.
-  static const _pullOverlap = Duration(minutes: 2);
 
   /// Per-request timeout so a dead socket (e.g. Android suspending the app
   /// mid-request) fails the sync instead of leaving it running forever.
@@ -217,47 +221,42 @@ class SyncService {
         final lastPullRaw = await db.getSetting(
           '${SyncKeys.lastPullPrefix}${table.remote}',
         );
-        final pullSince = lastPullRaw == null
-            ? DateTime.utc(1970)
-            : DateTime.parse(lastPullRaw).toUtc().subtract(_pullOverlap);
+        var cursorTs = DateTime.utc(1970);
+        String? cursorId;
+        if (lastPullRaw != null) {
+          final sep = lastPullRaw.indexOf('|');
+          cursorTs = DateTime.parse(lastPullRaw.substring(0, sep)).toUtc();
+          cursorId = lastPullRaw.substring(sep + 1);
+        }
 
-        // Pull page by page, applying and checkpointing each page
-        // independently, so watch queries rerun once per page (not once per
-        // row) and — critically — an interrupted catch-up resumes close to
-        // where it left off instead of restarting from scratch. A first-time
-        // catch-up can span dozens of pages, and Android can suspend or kill
-        // the app mid-sync at any point; checkpointing only at the very end
-        // meant that never happened before the whole pull finished
-        // uninterrupted, so a phone that never got a big enough window would
-        // silently redo the entire pull forever. Remember which row versions
-        // came from remote so the push below doesn't echo them all back.
+        // Pull page by page using an exact keyset cursor — "rows strictly
+        // after (cursorTs, cursorId)" — rather than a time-window overlap.
+        // Checkpointing after each page (not just once at the end) means a
+        // first-time catch-up spanning dozens of pages makes forward
+        // progress even if Android suspends or kills the app mid-sync.
+        // Remember which row versions came from remote so the push below
+        // doesn't echo them all back.
         final appliedVersions = <String, String>{};
         var fetched = 0;
-        for (var from = 0; ; from += _pullPageSize) {
-          final page = await client
-              .from(table.remote)
-              .select()
-              .gte('server_updated_at', _iso(pullSince))
-              // Ascending with an id tiebreaker: a stable total order, so
-              // equal timestamps can't shuffle between page fetches, and rows
-              // written concurrently by another device land on later pages
-              // instead of shifting earlier pages under the pagination.
+        for (;;) {
+          var query = client.from(table.remote).select();
+          query = cursorId == null
+              ? query.gte('server_updated_at', _iso(cursorTs))
+              : query.or(
+                  'server_updated_at.gt.${_iso(cursorTs)},'
+                  'and(server_updated_at.eq.${_iso(cursorTs)},id.gt.$cursorId)',
+                );
+          final page = await query
               .order('server_updated_at', ascending: true)
               .order('id', ascending: true)
-              .range(from, from + _pullPageSize - 1)
+              .limit(_pullPageSize)
               .timeout(requestTimeout);
           final rows = [for (final row in page) Map<String, dynamic>.from(row)];
           fetched += rows.length;
           if (rows.isNotEmpty) {
             _setProgress('${table.remote}: applying $fetched rows');
-            DateTime? pageMaxServerUpdatedAt;
             await db.transaction(() async {
               for (final row in rows) {
-                final rowServerUpdatedAt = _date(row['server_updated_at']);
-                if (pageMaxServerUpdatedAt == null ||
-                    rowServerUpdatedAt.isAfter(pageMaxServerUpdatedAt!)) {
-                  pageMaxServerUpdatedAt = rowServerUpdatedAt;
-                }
                 final applied = await table.applyRemote(db, row);
                 if (applied) {
                   pulled++;
@@ -268,9 +267,14 @@ class SyncService {
                 }
               }
             });
+            // Rows are ordered ascending, so the last row of the page is the
+            // new cursor position.
+            final last = rows.last;
+            cursorTs = _date(last['server_updated_at']);
+            cursorId = last['id'] as String;
             await db.setSetting(
               '${SyncKeys.lastPullPrefix}${table.remote}',
-              _iso(pageMaxServerUpdatedAt!),
+              '${_iso(cursorTs)}|$cursorId',
             );
           }
           if (rows.length < _pullPageSize) {
