@@ -92,6 +92,67 @@ create table if not exists fx_rates (
 
 create index if not exists fx_rates_updated_at_idx on fx_rates (updated_at);
 
+-- server_updated_at is stamped by Postgres at commit time (never by the
+-- client) and is what incremental pulls filter/order on. updated_at stays
+-- client-stamped and is what last-write-wins conflict resolution uses. This
+-- split means a device that's been offline for any length of time is still
+-- guaranteed to see everything it missed, because no client clock or push
+-- delay can put a row "behind" another device's pull cursor. See
+-- money_stamp_server_updated_at() below.
+alter table ledgers add column if not exists server_updated_at timestamptz not null default clock_timestamp();
+alter table accounts add column if not exists server_updated_at timestamptz not null default clock_timestamp();
+alter table categories add column if not exists server_updated_at timestamptz not null default clock_timestamp();
+alter table transactions add column if not exists server_updated_at timestamptz not null default clock_timestamp();
+alter table fx_rates add column if not exists server_updated_at timestamptz not null default clock_timestamp();
+
+create index if not exists ledgers_server_updated_at_idx on ledgers (server_updated_at);
+create index if not exists accounts_server_updated_at_idx on accounts (server_updated_at);
+create index if not exists categories_server_updated_at_idx on categories (server_updated_at);
+create index if not exists transactions_server_updated_at_idx on transactions (server_updated_at);
+create index if not exists fx_rates_server_updated_at_idx on fx_rates (server_updated_at);
+
+-- Stamps server_updated_at with the actual commit-time clock (overriding
+-- anything the client sends), and rejects an update that would clobber a
+-- newer edit with a stale one — e.g. a device that was offline for a while
+-- pushing an old version after a newer edit already synced from elsewhere.
+create or replace function money_stamp_server_updated_at()
+returns trigger
+language plpgsql
+as $$
+begin
+  if tg_op = 'UPDATE' and new.updated_at < old.updated_at then
+    return old;
+  end if;
+  new.server_updated_at := clock_timestamp();
+  return new;
+end;
+$$;
+
+drop trigger if exists ledgers_stamp_server_updated_at on ledgers;
+create trigger ledgers_stamp_server_updated_at
+  before insert or update on ledgers
+  for each row execute function money_stamp_server_updated_at();
+
+drop trigger if exists accounts_stamp_server_updated_at on accounts;
+create trigger accounts_stamp_server_updated_at
+  before insert or update on accounts
+  for each row execute function money_stamp_server_updated_at();
+
+drop trigger if exists categories_stamp_server_updated_at on categories;
+create trigger categories_stamp_server_updated_at
+  before insert or update on categories
+  for each row execute function money_stamp_server_updated_at();
+
+drop trigger if exists transactions_stamp_server_updated_at on transactions;
+create trigger transactions_stamp_server_updated_at
+  before insert or update on transactions
+  for each row execute function money_stamp_server_updated_at();
+
+drop trigger if exists fx_rates_stamp_server_updated_at on fx_rates;
+create trigger fx_rates_stamp_server_updated_at
+  before insert or update on fx_rates
+  for each row execute function money_stamp_server_updated_at();
+
 -- Single-user app: any authenticated user gets full access.
 alter table ledgers enable row level security;
 alter table accounts enable row level security;

@@ -14,7 +14,19 @@ import '../shared/providers.dart';
 import 'sync_config.dart';
 
 class SyncKeys {
+  /// Push bookmark: the point up to which this device's local changes have
+  /// been pushed. Compared against the client-stamped updated_at, which is
+  /// safe here because a device always knows definitively whether it has
+  /// pushed its own row — there's no cross-device timing gap on this side.
   static const lastSyncPrefix = 'last_sync_';
+
+  /// Pull bookmark: the point up to which remote rows have been fetched.
+  /// Compared against server_updated_at (stamped by Postgres on arrival,
+  /// never by the client), so a device catching up after any delay —
+  /// however long — is guaranteed to still find rows that arrived after
+  /// its last pull. A separate cursor from the push bookmark above because
+  /// the two compare against different clocks (server vs. client).
+  static const lastPullPrefix = 'last_pull_';
 }
 
 bool _supabaseInitialized = false;
@@ -81,7 +93,16 @@ class SyncTableResult {
 class SyncService {
   SyncService(this.db);
 
-  static const _incrementalOverlap = Duration(minutes: 10);
+  /// Overlap for the push cursor. Generous, though push has no cross-device
+  /// timing gap to guard against (see [SyncKeys.lastSyncPrefix]) — this only
+  /// cushions this device's own clock jitter between runs.
+  static const _pushOverlap = Duration(minutes: 10);
+
+  /// Overlap for the pull cursor. Small, because server_updated_at is
+  /// assigned at commit time: the only residual risk is two transactions
+  /// committing out of the order their clock_timestamp() calls were made,
+  /// which is a sub-second race, not a multi-hour one.
+  static const _pullOverlap = Duration(minutes: 2);
 
   /// Per-request timeout so a dead socket (e.g. Android suspending the app
   /// mid-request) fails the sync instead of leaving it running forever.
@@ -139,8 +160,12 @@ class SyncService {
 
   /// Two-way sync of all tables. Last write wins on updated_at.
   ///
-  /// Sync is incremental with a small overlap window to avoid missing rows near
-  /// the previous sync boundary.
+  /// Pull and push each track their own incremental cursor. Pushes compare
+  /// against this device's own updated_at (safe — a device always knows
+  /// whether it pushed its own row). Pulls compare against server_updated_at,
+  /// which Postgres stamps at commit time and the client can't influence, so
+  /// a device that's been offline for any length of time is still guaranteed
+  /// to find everything it missed on its next sync.
   Future<SyncResult> sync() async {
     if (!isSignedIn) {
       return SyncResult(
@@ -183,29 +208,36 @@ class SyncService {
       var tablePushed = 0, tablePulled = 0;
       try {
         _setProgress(table.remote);
-        final lastSyncRaw = await db.getSetting(
+        final lastPushRaw = await db.getSetting(
           '${SyncKeys.lastSyncPrefix}${table.remote}',
         );
-        final since = lastSyncRaw == null
+        final pushSince = lastPushRaw == null
             ? DateTime.utc(1970)
-            : DateTime.parse(lastSyncRaw).toUtc().subtract(_incrementalOverlap);
+            : DateTime.parse(lastPushRaw).toUtc().subtract(_pushOverlap);
+        final lastPullRaw = await db.getSetting(
+          '${SyncKeys.lastPullPrefix}${table.remote}',
+        );
+        final pullSince = lastPullRaw == null
+            ? DateTime.utc(1970)
+            : DateTime.parse(lastPullRaw).toUtc().subtract(_pullOverlap);
 
         // Pull page by page, applying each page in its own transaction so
         // watch queries rerun once per page (not once per row) and progress
         // survives an interrupted run. Remember which row versions came from
         // remote so the push below doesn't echo them all straight back.
         final appliedVersions = <String, String>{};
+        DateTime? maxServerUpdatedAt;
         var fetched = 0;
         for (var from = 0; ; from += _pullPageSize) {
           final page = await client
               .from(table.remote)
               .select()
-              .gte('updated_at', _iso(since))
+              .gte('server_updated_at', _iso(pullSince))
               // Ascending with an id tiebreaker: a stable total order, so
               // equal timestamps can't shuffle between page fetches, and rows
               // written concurrently by another device land on later pages
               // instead of shifting earlier pages under the pagination.
-              .order('updated_at', ascending: true)
+              .order('server_updated_at', ascending: true)
               .order('id', ascending: true)
               .range(from, from + _pullPageSize - 1)
               .timeout(requestTimeout);
@@ -215,6 +247,11 @@ class SyncService {
             _setProgress('${table.remote}: applying $fetched rows');
             await db.transaction(() async {
               for (final row in rows) {
+                final rowServerUpdatedAt = _date(row['server_updated_at']);
+                if (maxServerUpdatedAt == null ||
+                    rowServerUpdatedAt.isAfter(maxServerUpdatedAt!)) {
+                  maxServerUpdatedAt = rowServerUpdatedAt;
+                }
                 final applied = await table.applyRemote(db, row);
                 if (applied) {
                   pulled++;
@@ -230,6 +267,15 @@ class SyncService {
             break;
           }
         }
+        // Only advance the pull bookmark when rows were actually seen — if
+        // nothing changed, leave it as-is rather than trusting this device's
+        // own clock for how far the cursor has moved.
+        if (maxServerUpdatedAt != null) {
+          await db.setSetting(
+            '${SyncKeys.lastPullPrefix}${table.remote}',
+            _iso(maxServerUpdatedAt!),
+          );
+        }
 
         // Push local rows after remote rows are applied. If remote had the
         // newer version of a row, local now has that newer version too. Rows
@@ -237,7 +283,7 @@ class SyncService {
         // there — pushing them back would only burn bandwidth (fatal when
         // catching up on thousands of rows over a mobile connection).
         final localRows = filterAlreadyPushedRows(
-          await table.localRowsSince(db, since),
+          await table.localRowsSince(db, pushSince),
           appliedVersions,
         );
         for (var i = 0; i < localRows.length; i += _pushChunkSize) {

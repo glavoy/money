@@ -71,12 +71,26 @@ Tables: `Ledgers`, `Accounts`, `Categories`, `Transactions`, `FxRates`,
 
 ### Sync (`lib/sync/sync_service.dart`)
 
-- Two-way, last-write-wins per row, keyed on `updatedAt`. Each of the five
-  synced tables (ledgers, accounts, categories, transactions, fx_rates) is
-  synced independently: pull remote rows updated since the last sync
-  (with a 10-minute overlap window to avoid boundary misses), apply them
-  locally if newer, then push local rows updated since that same point.
-  `AppSettings` is local-only and never synced.
+- Two-way, last-write-wins per row on the client-stamped `updatedAt`. Each
+  of the five synced tables (ledgers, accounts, categories, transactions,
+  fx_rates) is synced independently and tracks two separate cursors in
+  `AppSettings` (`last_sync_<table>` for push, `last_pull_<table>` for pull) —
+  `AppSettings` itself is local-only and never synced.
+- Pulls filter/order on `server_updated_at`, a column Postgres stamps at
+  commit time via a trigger (`money_stamp_server_updated_at` in
+  `supabase/schema.sql`) that the client cannot influence. This is
+  deliberately separate from `updatedAt`: a device that's offline for any
+  length of time — minutes or days — is still guaranteed to see everything
+  it missed on its next pull, because no client clock or push delay can
+  place a row "behind" another device's pull cursor. `updatedAt` still
+  drives last-write-wins conflict resolution during apply. Pushes compare
+  against this device's own `updatedAt` instead (`last_sync_<table>`,
+  10-minute overlap) — safe, since a device always knows whether it has
+  pushed its own row; there's no cross-device timing gap on that side.
+- The same trigger also rejects a stale overwrite: an incoming update whose
+  `updated_at` is older than the row's current one is silently ignored
+  remote-side, protecting against a delayed device pushing an outdated
+  version after a newer edit has already synced from elsewhere.
 - Sync only runs when signed in to Supabase (`isSignedIn`); it's a no-op
   otherwise. It runs silently (swallowing errors) on app start, on resume,
   and on a 5-minute timer — see `_HomeShellState` in `lib/main.dart`. If a
