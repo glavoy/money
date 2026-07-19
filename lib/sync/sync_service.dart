@@ -221,12 +221,17 @@ class SyncService {
             ? DateTime.utc(1970)
             : DateTime.parse(lastPullRaw).toUtc().subtract(_pullOverlap);
 
-        // Pull page by page, applying each page in its own transaction so
-        // watch queries rerun once per page (not once per row) and progress
-        // survives an interrupted run. Remember which row versions came from
-        // remote so the push below doesn't echo them all straight back.
+        // Pull page by page, applying and checkpointing each page
+        // independently, so watch queries rerun once per page (not once per
+        // row) and — critically — an interrupted catch-up resumes close to
+        // where it left off instead of restarting from scratch. A first-time
+        // catch-up can span dozens of pages, and Android can suspend or kill
+        // the app mid-sync at any point; checkpointing only at the very end
+        // meant that never happened before the whole pull finished
+        // uninterrupted, so a phone that never got a big enough window would
+        // silently redo the entire pull forever. Remember which row versions
+        // came from remote so the push below doesn't echo them all back.
         final appliedVersions = <String, String>{};
-        DateTime? maxServerUpdatedAt;
         var fetched = 0;
         for (var from = 0; ; from += _pullPageSize) {
           final page = await client
@@ -245,12 +250,13 @@ class SyncService {
           fetched += rows.length;
           if (rows.isNotEmpty) {
             _setProgress('${table.remote}: applying $fetched rows');
+            DateTime? pageMaxServerUpdatedAt;
             await db.transaction(() async {
               for (final row in rows) {
                 final rowServerUpdatedAt = _date(row['server_updated_at']);
-                if (maxServerUpdatedAt == null ||
-                    rowServerUpdatedAt.isAfter(maxServerUpdatedAt!)) {
-                  maxServerUpdatedAt = rowServerUpdatedAt;
+                if (pageMaxServerUpdatedAt == null ||
+                    rowServerUpdatedAt.isAfter(pageMaxServerUpdatedAt!)) {
+                  pageMaxServerUpdatedAt = rowServerUpdatedAt;
                 }
                 final applied = await table.applyRemote(db, row);
                 if (applied) {
@@ -262,19 +268,14 @@ class SyncService {
                 }
               }
             });
+            await db.setSetting(
+              '${SyncKeys.lastPullPrefix}${table.remote}',
+              _iso(pageMaxServerUpdatedAt!),
+            );
           }
           if (rows.length < _pullPageSize) {
             break;
           }
-        }
-        // Only advance the pull bookmark when rows were actually seen — if
-        // nothing changed, leave it as-is rather than trusting this device's
-        // own clock for how far the cursor has moved.
-        if (maxServerUpdatedAt != null) {
-          await db.setSetting(
-            '${SyncKeys.lastPullPrefix}${table.remote}',
-            _iso(maxServerUpdatedAt!),
-          );
         }
 
         // Push local rows after remote rows are applied. If remote had the
