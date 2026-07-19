@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:math' as math;
 
 import 'package:drift/drift.dart';
 import 'package:flutter/foundation.dart';
@@ -86,15 +87,23 @@ class SyncService {
   /// mid-request) fails the sync instead of leaving it running forever.
   static const requestTimeout = Duration(seconds: 30);
 
+  /// Rows per push request, so a large backlog stays within [requestTimeout]
+  /// even on a slow mobile connection.
+  static const _pushChunkSize = 500;
+
   final AppDatabase db;
   bool _rerunAfterCurrent = false;
   Future<SyncResult>? _currentSync;
   SyncResult? _lastResult;
+  String? _progress;
   var _changeVersion = 0;
   final _changes = StreamController<int>.broadcast();
 
   bool get isRunning => _currentSync != null;
   SyncResult? get lastResult => _lastResult;
+
+  /// Short description of what the running sync is doing, for the sync screen.
+  String? get progress => _progress;
   Stream<int> get changes => _changes.stream;
 
   void dispose() {
@@ -105,6 +114,11 @@ class SyncService {
     if (!_changes.isClosed) {
       _changes.add(++_changeVersion);
     }
+  }
+
+  void _setProgress(String? value) {
+    _progress = value;
+    _emitChanged();
   }
 
   bool get isSignedIn =>
@@ -147,6 +161,7 @@ class SyncService {
       return result;
     } finally {
       _currentSync = null;
+      _progress = null;
       _emitChanged();
       if (_rerunAfterCurrent) {
         _rerunAfterCurrent = false;
@@ -156,14 +171,18 @@ class SyncService {
   }
 
   Future<SyncResult> _runSync() async {
-    try {
-      var pushed = 0, pulled = 0;
-      final tableResults = <SyncTableResult>[];
-      final client = Supabase.instance.client;
-      final syncStart = DateTime.now().toUtc();
+    var pushed = 0, pulled = 0;
+    final tableResults = <SyncTableResult>[];
+    final errors = <String>[];
+    final client = Supabase.instance.client;
+    final syncStart = DateTime.now().toUtc();
 
-      for (final table in _tables) {
-        var tablePushed = 0, tablePulled = 0;
+    // Each table syncs independently: an error in one still lets the others
+    // finish and advance their bookmarks.
+    for (final table in _tables) {
+      var tablePushed = 0, tablePulled = 0;
+      try {
+        _setProgress(table.remote);
         final lastSyncRaw = await db.getSetting(
           '${SyncKeys.lastSyncPrefix}${table.remote}',
         );
@@ -176,40 +195,55 @@ class SyncService {
           table.remote,
           since,
         );
-        for (final row in remoteRows) {
-          if (await table.applyRemote(db, row)) {
-            pulled++;
-            tablePulled++;
-          }
+        if (remoteRows.isNotEmpty) {
+          _setProgress('${table.remote}: applying ${remoteRows.length} rows');
+          // One transaction per table so watch queries rerun once, not once
+          // per applied row — that per-row churn made catching up on a large
+          // backlog take minutes on phones.
+          await db.transaction(() async {
+            for (final row in remoteRows) {
+              if (await table.applyRemote(db, row)) {
+                pulled++;
+                tablePulled++;
+              }
+            }
+          });
         }
 
         // Push local rows after remote rows are applied. If remote had the
         // newer version of a row, local now has that newer version too.
         final localRows = await table.localRowsSince(db, since);
-        if (localRows.isNotEmpty) {
+        for (var i = 0; i < localRows.length; i += _pushChunkSize) {
+          final end = math.min(i + _pushChunkSize, localRows.length);
+          _setProgress('${table.remote}: pushing $end/${localRows.length}');
           await client
               .from(table.remote)
-              .upsert(localRows)
+              .upsert(localRows.sublist(i, end))
               .timeout(requestTimeout);
-          pushed += localRows.length;
-          tablePushed += localRows.length;
+          pushed += end - i;
+          tablePushed += end - i;
         }
-        tableResults.add(
-          SyncTableResult(
-            name: table.remote,
-            pushed: tablePushed,
-            pulled: tablePulled,
-          ),
-        );
         await db.setSetting(
           '${SyncKeys.lastSyncPrefix}${table.remote}',
           syncStart.toIso8601String(),
         );
+      } on Object catch (e) {
+        errors.add('${table.remote}: $e');
       }
-      return SyncResult(pushed: pushed, pulled: pulled, tables: tableResults);
-    } on Object catch (e) {
-      return SyncResult(pushed: 0, pulled: 0, error: e.toString());
+      tableResults.add(
+        SyncTableResult(
+          name: table.remote,
+          pushed: tablePushed,
+          pulled: tablePulled,
+        ),
+      );
     }
+    return SyncResult(
+      pushed: pushed,
+      pulled: pulled,
+      tables: tableResults,
+      error: errors.isEmpty ? null : errors.join('\n'),
+    );
   }
 }
 

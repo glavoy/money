@@ -83,8 +83,9 @@ class _SyncScreenState extends ConsumerState<SyncScreen> {
     ref.watch(syncStateProvider);
     final syncService = ref.watch(syncServiceProvider);
     final signedIn = syncService.isSignedIn;
+    final progress = syncService.progress;
     final status = syncService.isRunning
-        ? 'Syncing…'
+        ? 'Syncing…${progress == null ? '' : ' $progress'}'
         : _status ??
               (syncService.lastResult == null
                   ? null
