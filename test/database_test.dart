@@ -585,6 +585,109 @@ void main() {
     });
   });
 
+  group('fx rate sync merge', () {
+    Future<void> insertLocalRate(
+      AppDatabase db, {
+      required String id,
+      required DateTime date,
+      required double usdUgx,
+      required DateTime updatedAt,
+    }) {
+      return db
+          .into(db.fxRates)
+          .insert(
+            FxRatesCompanion.insert(
+              id: id,
+              date: date,
+              usdUgx: Value(usdUgx),
+              createdAt: updatedAt,
+              updatedAt: updatedAt,
+            ),
+          );
+    }
+
+    Map<String, dynamic> remoteRate({
+      required String id,
+      required DateTime date,
+      required double usdUgx,
+      required DateTime updatedAt,
+    }) {
+      return {
+        'id': id,
+        'date': date.toIso8601String(),
+        'usd_ugx': usdUgx,
+        'cad_ugx': null,
+        'usd_cad': null,
+        'source': FxSource.api,
+        'created_at': updatedAt.toIso8601String(),
+        'updated_at': updatedAt.toIso8601String(),
+        'deleted': false,
+      };
+    }
+
+    test('newer remote row under another id replaces the local row', () async {
+      final db = _openTestDb();
+      addTearDown(db.close);
+      final day = DateTime.utc(2026, 7, 1);
+
+      await insertLocalRate(
+        db,
+        id: 'fx-local',
+        date: day,
+        usdUgx: 3700,
+        updatedAt: DateTime.utc(2026, 7, 1, 8),
+      );
+      final applied = await applyRemoteRowForTest(
+        db,
+        'fx_rates',
+        remoteRate(
+          id: 'fx-remote',
+          date: day,
+          usdUgx: 3800,
+          updatedAt: DateTime.utc(2026, 7, 1, 9),
+        ),
+      );
+
+      expect(applied, isTrue);
+      final rows = await db.select(db.fxRates).get();
+      final row = rows.singleWhere((r) => r.date == day);
+      // The remote id is adopted so a later push can't collide with the
+      // remote unique date constraint.
+      expect(row.id, 'fx-remote');
+      expect(row.usdUgx, 3800);
+    });
+
+    test('older remote row under another id leaves the local row', () async {
+      final db = _openTestDb();
+      addTearDown(db.close);
+      final day = DateTime.utc(2026, 7, 1);
+
+      await insertLocalRate(
+        db,
+        id: 'fx-local',
+        date: day,
+        usdUgx: 3700,
+        updatedAt: DateTime.utc(2026, 7, 1, 9),
+      );
+      final applied = await applyRemoteRowForTest(
+        db,
+        'fx_rates',
+        remoteRate(
+          id: 'fx-remote',
+          date: day,
+          usdUgx: 3800,
+          updatedAt: DateTime.utc(2026, 7, 1, 8),
+        ),
+      );
+
+      expect(applied, isFalse);
+      final rows = await db.select(db.fxRates).get();
+      final row = rows.singleWhere((r) => r.date == day);
+      expect(row.id, 'fx-local');
+      expect(row.usdUgx, 3700);
+    });
+  });
+
   group('sync push filter', () {
     test('rows just applied from remote are not pushed back', () async {
       final db = _openTestDb();

@@ -245,7 +245,10 @@ class SyncService {
           _setProgress('${table.remote}: pushing $end/${localRows.length}');
           await client
               .from(table.remote)
-              .upsert(localRows.sublist(i, end))
+              .upsert(
+                localRows.sublist(i, end),
+                onConflict: table.pushOnConflict,
+              )
               .timeout(requestTimeout);
           pushed += end - i;
           tablePushed += end - i;
@@ -298,6 +301,7 @@ class _TableSync {
     required this.remote,
     required this.localRowsSince,
     required this.applyRemote,
+    this.pushOnConflict,
   });
 
   final String remote;
@@ -306,6 +310,12 @@ class _TableSync {
 
   /// Returns true when the remote row replaced/created a local row.
   final Future<bool> Function(AppDatabase, Map<String, dynamic>) applyRemote;
+
+  /// Remote column for upsert conflict resolution; null targets the primary
+  /// key. fx_rates uses its unique date so two devices that independently
+  /// fetched the same day's rate (under different ids) update one remote row
+  /// instead of violating the unique constraint.
+  final String? pushOnConflict;
 }
 
 final _tables = <_TableSync>[
@@ -515,6 +525,7 @@ final _tables = <_TableSync>[
   ),
   _TableSync(
     remote: 'fx_rates',
+    pushOnConflict: 'date',
     localRowsSince: (db, since) async {
       final rows = await (db.select(
         db.fxRates,
@@ -536,23 +547,37 @@ final _tables = <_TableSync>[
     },
     applyRemote: (db, row) async {
       final remoteUpdated = _date(row['updated_at']);
+      final remoteId = row['id'] as String;
       final local = await (db.select(
         db.fxRates,
-      )..where((t) => t.id.equals(row['id'] as String))).getSingleOrNull();
+      )..where((t) => t.id.equals(remoteId))).getSingleOrNull();
       if (local != null && local.updatedAt.isAfter(remoteUpdated)) {
         return false;
       }
       // A row for the same date may exist locally under a different id
-      // (e.g. both devices fetched the same day's rate). Keep the local id.
+      // (e.g. both devices fetched the same day's rate before syncing).
       final sameDate = await (db.select(
         db.fxRates,
       )..where((t) => t.date.equals(_date(row['date'])))).getSingleOrNull();
-      final id = sameDate?.id ?? row['id'] as String;
+      if (sameDate != null && sameDate.id != remoteId) {
+        if (sameDate.updatedAt.isAfter(remoteUpdated)) {
+          // The local rate is newer; keep it. The push (onConflict: date)
+          // overwrites the remote row for this date with it.
+          return false;
+        }
+        // Adopt the remote id: replace the locally-created row so a later
+        // push can't insert a second id for a date the remote already has
+        // (its unique date constraint would reject the whole chunk). The
+        // date's row lives on under the remote id, so no tombstone is lost.
+        await (db.delete(
+          db.fxRates,
+        )..where((t) => t.id.equals(sameDate.id))).go();
+      }
       await db
           .into(db.fxRates)
           .insertOnConflictUpdate(
             FxRatesCompanion(
-              id: Value(id),
+              id: Value(remoteId),
               date: Value(_date(row['date'])),
               usdUgx: Value(_num(row['usd_ugx'])),
               cadUgx: Value(_num(row['cad_ugx'])),
