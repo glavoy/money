@@ -225,8 +225,17 @@ class SyncService {
         String? cursorId;
         if (lastPullRaw != null) {
           final sep = lastPullRaw.indexOf('|');
-          cursorTs = DateTime.parse(lastPullRaw.substring(0, sep)).toUtc();
-          cursorId = lastPullRaw.substring(sep + 1);
+          if (sep == -1) {
+            // A bookmark saved by a version before the keyset cursor: a
+            // plain timestamp with no id suffix. Fall back to a timestamp
+            // -only query for one more round; it'll re-match rows at that
+            // exact instant (harmless, idempotent) and then checkpoint in
+            // the new format from then on.
+            cursorTs = DateTime.parse(lastPullRaw).toUtc();
+          } else {
+            cursorTs = DateTime.parse(lastPullRaw.substring(0, sep)).toUtc();
+            cursorId = lastPullRaw.substring(sep + 1);
+          }
         }
 
         // Pull page by page using an exact keyset cursor — "rows strictly
