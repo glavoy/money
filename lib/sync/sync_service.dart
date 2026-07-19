@@ -190,29 +190,56 @@ class SyncService {
             ? DateTime.utc(1970)
             : DateTime.parse(lastSyncRaw).toUtc().subtract(_incrementalOverlap);
 
-        final remoteRows = await _fetchRemoteRowsSince(
-          client,
-          table.remote,
-          since,
-        );
-        if (remoteRows.isNotEmpty) {
-          _setProgress('${table.remote}: applying ${remoteRows.length} rows');
-          // One transaction per table so watch queries rerun once, not once
-          // per applied row — that per-row churn made catching up on a large
-          // backlog take minutes on phones.
-          await db.transaction(() async {
-            for (final row in remoteRows) {
-              if (await table.applyRemote(db, row)) {
-                pulled++;
-                tablePulled++;
+        // Pull page by page, applying each page in its own transaction so
+        // watch queries rerun once per page (not once per row) and progress
+        // survives an interrupted run. Remember which row versions came from
+        // remote so the push below doesn't echo them all straight back.
+        final appliedVersions = <String, String>{};
+        var fetched = 0;
+        for (var from = 0; ; from += _pullPageSize) {
+          final page = await client
+              .from(table.remote)
+              .select()
+              .gte('updated_at', _iso(since))
+              // Ascending with an id tiebreaker: a stable total order, so
+              // equal timestamps can't shuffle between page fetches, and rows
+              // written concurrently by another device land on later pages
+              // instead of shifting earlier pages under the pagination.
+              .order('updated_at', ascending: true)
+              .order('id', ascending: true)
+              .range(from, from + _pullPageSize - 1)
+              .timeout(requestTimeout);
+          final rows = [for (final row in page) Map<String, dynamic>.from(row)];
+          fetched += rows.length;
+          if (rows.isNotEmpty) {
+            _setProgress('${table.remote}: applying $fetched rows');
+            await db.transaction(() async {
+              for (final row in rows) {
+                final applied = await table.applyRemote(db, row);
+                if (applied) {
+                  pulled++;
+                  tablePulled++;
+                  appliedVersions[row['id'] as String] = _iso(
+                    _date(row['updated_at']),
+                  );
+                }
               }
-            }
-          });
+            });
+          }
+          if (rows.length < _pullPageSize) {
+            break;
+          }
         }
 
         // Push local rows after remote rows are applied. If remote had the
-        // newer version of a row, local now has that newer version too.
-        final localRows = await table.localRowsSince(db, since);
+        // newer version of a row, local now has that newer version too. Rows
+        // whose current version was just applied from remote are unchanged
+        // there — pushing them back would only burn bandwidth (fatal when
+        // catching up on thousands of rows over a mobile connection).
+        final localRows = filterAlreadyPushedRows(
+          await table.localRowsSince(db, since),
+          appliedVersions,
+        );
         for (var i = 0; i < localRows.length; i += _pushChunkSize) {
           final end = math.min(i + _pushChunkSize, localRows.length);
           _setProgress('${table.remote}: pushing $end/${localRows.length}');
@@ -247,30 +274,19 @@ class SyncService {
   }
 }
 
-Future<List<Map<String, dynamic>>> _fetchRemoteRowsSince(
-  SupabaseClient client,
-  String table,
-  DateTime since,
-) async {
-  const pageSize = 1000;
-  final allRows = <Map<String, dynamic>>[];
+const _pullPageSize = 1000;
 
-  for (var from = 0; ; from += pageSize) {
-    final page = await client
-        .from(table)
-        .select()
-        .gte('updated_at', _iso(since))
-        // Ascending, so rows written concurrently by another device land on
-        // later pages instead of shifting earlier pages under the pagination.
-        .order('updated_at', ascending: true)
-        .range(from, from + pageSize - 1)
-        .timeout(SyncService.requestTimeout);
-    allRows.addAll([for (final row in page) Map<String, dynamic>.from(row)]);
-
-    if (page.length < pageSize) {
-      return allRows;
-    }
-  }
+/// Drops local rows whose exact version was just applied from remote —
+/// remote already has them, so pushing them back is pure overhead.
+@visibleForTesting
+List<Map<String, dynamic>> filterAlreadyPushedRows(
+  List<Map<String, dynamic>> localRows,
+  Map<String, String> appliedVersions,
+) {
+  return [
+    for (final row in localRows)
+      if (appliedVersions[row['id']] != row['updated_at']) row,
+  ];
 }
 
 String _iso(DateTime d) => d.toUtc().toIso8601String();

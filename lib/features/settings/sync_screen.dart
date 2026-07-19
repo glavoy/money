@@ -84,8 +84,10 @@ class _SyncScreenState extends ConsumerState<SyncScreen> {
     final syncService = ref.watch(syncServiceProvider);
     final signedIn = syncService.isSignedIn;
     final progress = syncService.progress;
+    final lastError = syncService.lastResult?.error;
     final status = syncService.isRunning
         ? 'Syncing…${progress == null ? '' : ' $progress'}'
+              '${lastError == null ? '' : '\nPrevious attempt failed: $lastError'}'
         : _status ??
               (syncService.lastResult == null
                   ? null

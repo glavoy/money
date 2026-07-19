@@ -584,4 +584,56 @@ void main() {
       expect(fx.rateOn(DateTime.utc(2025, 1, 1))!.usdUgx, 3500);
     });
   });
+
+  group('sync push filter', () {
+    test('rows just applied from remote are not pushed back', () async {
+      final db = _openTestDb();
+      addTearDown(db.close);
+      // Microsecond precision, as Supabase timestamptz columns return it.
+      const remoteUpdatedAt = '2026-07-17T06:39:30.408914+00:00';
+      const remoteId = 'tx-from-remote';
+
+      await applyRemoteRowForTest(db, 'transactions', {
+        'id': remoteId,
+        'ledger_id': personalLedgerId,
+        'date': '2026-07-16T00:00:00+00:00',
+        'kind': TxKind.expense,
+        'amount': 5000.0,
+        'account_id': 'acc-cash',
+        'category_id': seedCategoryId('food', CategoryKind.expense),
+        'to_account_id': null,
+        'to_amount': null,
+        'note': null,
+        'created_at': remoteUpdatedAt,
+        'updated_at': remoteUpdatedAt,
+        'deleted': false,
+      });
+      // A genuinely local change that must survive the filter.
+      await db.upsertTransaction(
+        _tx(
+          id: 'tx-local-only',
+          date: DateTime.utc(2026, 7, 17),
+          kind: TxKind.expense,
+          amount: 1000,
+          accountId: 'acc-cash',
+          categoryId: seedCategoryId('food', CategoryKind.expense),
+        ),
+      );
+
+      final localRows = await exportLocalRowsForTest(db, 'transactions');
+      final appliedVersions = {
+        remoteId: DateTime.parse(remoteUpdatedAt).toUtc().toIso8601String(),
+      };
+      final toPush = filterAlreadyPushedRows(localRows, appliedVersions);
+
+      expect(
+        toPush.map((row) => row['id']),
+        isNot(contains(remoteId)),
+        reason:
+            'the applied remote row must round-trip to the same '
+            'updated_at string and be excluded from the push',
+      );
+      expect(toPush.map((row) => row['id']), contains('tx-local-only'));
+    });
+  });
 }
