@@ -63,13 +63,15 @@ void main() {
     expect(
       csv,
       contains(
-        'id,ledger,date,kind,amount,account,category,to_account,to_amount,note',
+        'id,ledger,date,kind,amount,account,category,to_account,to_amount,'
+        'note,exclude_from_report',
       ),
     );
     expect(
       csv,
       contains('tx-1,Personal,2026-07-17,expense,12000.0,Imported history'),
     );
+    expect(csv, contains(',"Lunch, with comma",false'));
     expect(csv, contains('food'));
     expect(csv, isNot(contains(historyAccountId)));
     expect(csv, isNot(contains('cat-expense-food')));

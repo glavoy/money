@@ -573,6 +573,7 @@ Future<void> showEditTransactionSheet(
   var categoryId = tx.categoryId;
   var accountId = tx.accountId;
   var toAccountId = tx.toAccountId;
+  var excludeFromReport = tx.excludeFromReport;
 
   await showModalBottomSheet<void>(
     context: context,
@@ -674,6 +675,20 @@ Future<void> showEditTransactionSheet(
                 onChanged: (v) => setSheetState(() => categoryId = v),
               ),
             ],
+            if (tx.kind != TxKind.transfer)
+              CheckboxListTile(
+                value: excludeFromReport,
+                onChanged: (v) =>
+                    setSheetState(() => excludeFromReport = v ?? false),
+                title: Text(
+                  tx.kind == TxKind.income
+                      ? 'Exclude from income'
+                      : 'Exclude from expenses',
+                ),
+                controlAffinity: ListTileControlAffinity.leading,
+                contentPadding: EdgeInsets.zero,
+                dense: true,
+              ),
             const SizedBox(height: 12),
             TextField(
               controller: noteController,
@@ -738,6 +753,9 @@ Future<void> showEditTransactionSheet(
                       noteController.text.trim().isEmpty
                           ? null
                           : noteController.text.trim(),
+                    ),
+                    excludeFromReport: Value(
+                      tx.kind == TxKind.transfer ? false : excludeFromReport,
                     ),
                     createdAt: tx.createdAt,
                     updatedAt: DateTime.now().toUtc(),

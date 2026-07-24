@@ -101,6 +101,12 @@ class Transactions extends Table {
   DateTimeColumn get createdAt => dateTime()();
   DateTimeColumn get updatedAt => dateTime()();
   BoolColumn get deleted => boolean().withDefault(const Constant(false))();
+  // Real money movement (affects account balances/history as normal) that
+  // the user wants left out of income/expense reports — e.g. per diem or
+  // money held for someone else. Meaningless for transfers, which are
+  // already excluded from reports.
+  BoolColumn get excludeFromReport =>
+      boolean().withDefault(const Constant(false))();
 
   @override
   Set<Column> get primaryKey => {id};
@@ -153,7 +159,7 @@ class AppDatabase extends _$AppDatabase {
   AppDatabase.open() : super(_openConnection());
 
   @override
-  int get schemaVersion => 2;
+  int get schemaVersion => 3;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -177,6 +183,9 @@ class AppDatabase extends _$AppDatabase {
         await m.addColumn(accounts, accounts.ledgerId);
         await m.addColumn(categories, categories.ledgerId);
         await m.addColumn(transactions, transactions.ledgerId);
+      }
+      if (from < 3) {
+        await m.addColumn(transactions, transactions.excludeFromReport);
       }
     },
   );

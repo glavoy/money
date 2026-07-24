@@ -180,7 +180,7 @@ Future<({double expense, double income})> _totalsBetween(
   final fx = await _loadFxTable(db, from, to);
   double expense = 0, income = 0;
   for (final t in txs) {
-    if (t.kind == TxKind.transfer) continue;
+    if (t.kind == TxKind.transfer || t.excludeFromReport) continue;
     final fromCurrency = accountCurrency[t.accountId] ?? Currency.ugx;
     final converted = fx.convert(t.amount, fromCurrency, currency, t.date);
     if (converted == null) continue;
@@ -230,7 +230,7 @@ Future<ReportData> computeReport({
   var missingRates = false;
 
   for (final t in txs) {
-    if (t.kind == TxKind.transfer) continue;
+    if (t.kind == TxKind.transfer || t.excludeFromReport) continue;
     final from = accountCurrency[t.accountId] ?? Currency.ugx;
     final converted = fx.convert(t.amount, from, currency, t.date);
     if (converted == null) {

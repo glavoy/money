@@ -60,6 +60,7 @@ create table if not exists transactions (
   to_account_id text,
   to_amount double precision,
   note text,
+  exclude_from_report boolean not null default false,
   created_at timestamptz not null,
   updated_at timestamptz not null,
   deleted boolean not null default false
@@ -71,6 +72,8 @@ alter table categories
   add column if not exists ledger_id text not null default 'ledger-personal';
 alter table transactions
   add column if not exists ledger_id text not null default 'ledger-personal';
+alter table transactions
+  add column if not exists exclude_from_report boolean not null default false;
 
 create index if not exists accounts_ledger_id_idx on accounts (ledger_id);
 create index if not exists categories_ledger_id_idx on categories (ledger_id);

@@ -27,6 +27,7 @@ String transactionsToCsv(
       'to_account',
       'to_amount',
       'note',
+      'exclude_from_report',
     ],
     for (final tx in transactions)
       [
@@ -44,6 +45,7 @@ String transactionsToCsv(
             : accountNames[tx.toAccountId] ?? tx.toAccountId,
         tx.toAmount,
         tx.note,
+        tx.excludeFromReport,
       ],
   ];
   return const CsvEncoder().convert(rows);

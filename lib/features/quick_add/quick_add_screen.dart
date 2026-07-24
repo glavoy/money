@@ -27,6 +27,7 @@ class _QuickAddScreenState extends ConsumerState<QuickAddScreen> {
   String? _categoryId;
   String? _accountId;
   String? _toAccountId;
+  bool _excludeFromReport = false;
 
   @override
   void dispose() {
@@ -127,6 +128,7 @@ class _QuickAddScreenState extends ConsumerState<QuickAddScreen> {
               ? null
               : _noteController.text.trim(),
         ),
+        excludeFromReport: Value(!isTransfer && _excludeFromReport),
         createdAt: now,
         updatedAt: now,
       ),
@@ -136,6 +138,7 @@ class _QuickAddScreenState extends ConsumerState<QuickAddScreen> {
       _amountController.clear();
       _toAmountController.clear();
       _noteController.clear();
+      _excludeFromReport = false;
       // Keep category/account/date selected: entering several similar rows
       // (or several rows for a past day) is common.
     });
@@ -389,6 +392,20 @@ class _QuickAddScreenState extends ConsumerState<QuickAddScreen> {
             ],
           ),
         ],
+        if (!isTransfer)
+          CheckboxListTile(
+            key: const ValueKey('exclude-from-report'),
+            value: _excludeFromReport,
+            onChanged: (v) => setState(() => _excludeFromReport = v ?? false),
+            title: Text(
+              _kind == TxKind.income
+                  ? 'Exclude from income'
+                  : 'Exclude from expenses',
+            ),
+            controlAffinity: ListTileControlAffinity.leading,
+            contentPadding: EdgeInsets.zero,
+            dense: true,
+          ),
         const SizedBox(height: 16),
         TextField(
           controller: _noteController,
@@ -671,7 +688,9 @@ class _DaySummary extends ConsumerWidget {
         final categoryById = {for (final c in categories) c.id: c};
         double totalUgx = 0;
         final latestRate = ref.watch(latestRateProvider).value;
-        for (final t in txs.where((t) => t.kind == TxKind.expense)) {
+        for (final t in txs.where(
+          (t) => t.kind == TxKind.expense && !t.excludeFromReport,
+        )) {
           final currency = CurrencyX.fromCode(
             accountById[t.accountId]?.currency ?? 'UGX',
           );

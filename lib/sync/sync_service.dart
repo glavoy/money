@@ -547,6 +547,7 @@ final _tables = <_TableSync>[
             'to_account_id': r.toAccountId,
             'to_amount': r.toAmount,
             'note': r.note,
+            'exclude_from_report': r.excludeFromReport,
             'created_at': _iso(r.createdAt),
             'updated_at': _iso(r.updatedAt),
             'deleted': r.deleted,
@@ -575,6 +576,9 @@ final _tables = <_TableSync>[
               toAccountId: Value(row['to_account_id'] as String?),
               toAmount: Value(_num(row['to_amount'])),
               note: Value(row['note'] as String?),
+              excludeFromReport: Value(
+                row['exclude_from_report'] as bool? ?? false,
+              ),
               createdAt: Value(_date(row['created_at'])),
               updatedAt: Value(remoteUpdated),
               deleted: Value(row['deleted'] as bool? ?? false),

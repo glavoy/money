@@ -21,6 +21,7 @@ void main() {
     double amount, {
     String category = 'food',
     String account = 'acc-cash',
+    bool excludeFromReport = false,
   }) async {
     final now = DateTime.now().toUtc();
     await db.upsertTransaction(
@@ -31,6 +32,7 @@ void main() {
         amount: amount,
         accountId: account,
         categoryId: Value(seedCategoryId(category, CategoryKind.expense)),
+        excludeFromReport: Value(excludeFromReport),
         createdAt: now,
         updatedAt: now,
       ),
@@ -76,6 +78,31 @@ void main() {
     expect(report.buckets[1].expense, 15000); // May 2nd
     expect(report.buckets[19].expense, 20000); // May 20th
   });
+
+  test(
+    'excludeFromReport keeps a transaction out of totals and buckets',
+    () async {
+      await addExpense('e1', DateTime.utc(2026, 5, 2), 10000);
+      await addExpense(
+        'per-diem',
+        DateTime.utc(2026, 5, 2),
+        50000,
+        excludeFromReport: true,
+      );
+
+      final report = await computeReport(
+        db: db,
+        ledgerId: personalLedgerId,
+        period: ReportPeriod.month,
+        anchor: DateTime.utc(2026, 5, 1),
+        currency: Currency.ugx,
+      );
+
+      expect(report.expenseTotal, 10000);
+      expect(report.byCategory.first.value, 10000);
+      expect(report.buckets[1].expense, 10000); // May 2nd
+    },
+  );
 
   test('converts USD account expenses using the fx rate of the day', () async {
     await db.upsertRate(

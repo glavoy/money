@@ -1908,6 +1908,21 @@ class $TransactionsTable extends Transactions
     ),
     defaultValue: const Constant(false),
   );
+  static const VerificationMeta _excludeFromReportMeta = const VerificationMeta(
+    'excludeFromReport',
+  );
+  @override
+  late final GeneratedColumn<bool> excludeFromReport = GeneratedColumn<bool>(
+    'exclude_from_report',
+    aliasedName,
+    false,
+    type: DriftSqlType.bool,
+    requiredDuringInsert: false,
+    defaultConstraints: GeneratedColumn.constraintIsAlways(
+      'CHECK ("exclude_from_report" IN (0, 1))',
+    ),
+    defaultValue: const Constant(false),
+  );
   @override
   List<GeneratedColumn> get $columns => [
     id,
@@ -1923,6 +1938,7 @@ class $TransactionsTable extends Transactions
     createdAt,
     updatedAt,
     deleted,
+    excludeFromReport,
   ];
   @override
   String get aliasedName => _alias ?? actualTableName;
@@ -2028,6 +2044,15 @@ class $TransactionsTable extends Transactions
         deleted.isAcceptableOrUnknown(data['deleted']!, _deletedMeta),
       );
     }
+    if (data.containsKey('exclude_from_report')) {
+      context.handle(
+        _excludeFromReportMeta,
+        excludeFromReport.isAcceptableOrUnknown(
+          data['exclude_from_report']!,
+          _excludeFromReportMeta,
+        ),
+      );
+    }
     return context;
   }
 
@@ -2089,6 +2114,10 @@ class $TransactionsTable extends Transactions
         DriftSqlType.bool,
         data['${effectivePrefix}deleted'],
       )!,
+      excludeFromReport: attachedDatabase.typeMapping.read(
+        DriftSqlType.bool,
+        data['${effectivePrefix}exclude_from_report'],
+      )!,
     );
   }
 
@@ -2112,6 +2141,7 @@ class Transaction extends DataClass implements Insertable<Transaction> {
   final DateTime createdAt;
   final DateTime updatedAt;
   final bool deleted;
+  final bool excludeFromReport;
   const Transaction({
     required this.id,
     required this.ledgerId,
@@ -2126,6 +2156,7 @@ class Transaction extends DataClass implements Insertable<Transaction> {
     required this.createdAt,
     required this.updatedAt,
     required this.deleted,
+    required this.excludeFromReport,
   });
   @override
   Map<String, Expression> toColumns(bool nullToAbsent) {
@@ -2151,6 +2182,7 @@ class Transaction extends DataClass implements Insertable<Transaction> {
     map['created_at'] = Variable<DateTime>(createdAt);
     map['updated_at'] = Variable<DateTime>(updatedAt);
     map['deleted'] = Variable<bool>(deleted);
+    map['exclude_from_report'] = Variable<bool>(excludeFromReport);
     return map;
   }
 
@@ -2175,6 +2207,7 @@ class Transaction extends DataClass implements Insertable<Transaction> {
       createdAt: Value(createdAt),
       updatedAt: Value(updatedAt),
       deleted: Value(deleted),
+      excludeFromReport: Value(excludeFromReport),
     );
   }
 
@@ -2197,6 +2230,7 @@ class Transaction extends DataClass implements Insertable<Transaction> {
       createdAt: serializer.fromJson<DateTime>(json['createdAt']),
       updatedAt: serializer.fromJson<DateTime>(json['updatedAt']),
       deleted: serializer.fromJson<bool>(json['deleted']),
+      excludeFromReport: serializer.fromJson<bool>(json['excludeFromReport']),
     );
   }
   @override
@@ -2216,6 +2250,7 @@ class Transaction extends DataClass implements Insertable<Transaction> {
       'createdAt': serializer.toJson<DateTime>(createdAt),
       'updatedAt': serializer.toJson<DateTime>(updatedAt),
       'deleted': serializer.toJson<bool>(deleted),
+      'excludeFromReport': serializer.toJson<bool>(excludeFromReport),
     };
   }
 
@@ -2233,6 +2268,7 @@ class Transaction extends DataClass implements Insertable<Transaction> {
     DateTime? createdAt,
     DateTime? updatedAt,
     bool? deleted,
+    bool? excludeFromReport,
   }) => Transaction(
     id: id ?? this.id,
     ledgerId: ledgerId ?? this.ledgerId,
@@ -2247,6 +2283,7 @@ class Transaction extends DataClass implements Insertable<Transaction> {
     createdAt: createdAt ?? this.createdAt,
     updatedAt: updatedAt ?? this.updatedAt,
     deleted: deleted ?? this.deleted,
+    excludeFromReport: excludeFromReport ?? this.excludeFromReport,
   );
   Transaction copyWithCompanion(TransactionsCompanion data) {
     return Transaction(
@@ -2267,6 +2304,9 @@ class Transaction extends DataClass implements Insertable<Transaction> {
       createdAt: data.createdAt.present ? data.createdAt.value : this.createdAt,
       updatedAt: data.updatedAt.present ? data.updatedAt.value : this.updatedAt,
       deleted: data.deleted.present ? data.deleted.value : this.deleted,
+      excludeFromReport: data.excludeFromReport.present
+          ? data.excludeFromReport.value
+          : this.excludeFromReport,
     );
   }
 
@@ -2285,7 +2325,8 @@ class Transaction extends DataClass implements Insertable<Transaction> {
           ..write('note: $note, ')
           ..write('createdAt: $createdAt, ')
           ..write('updatedAt: $updatedAt, ')
-          ..write('deleted: $deleted')
+          ..write('deleted: $deleted, ')
+          ..write('excludeFromReport: $excludeFromReport')
           ..write(')'))
         .toString();
   }
@@ -2305,6 +2346,7 @@ class Transaction extends DataClass implements Insertable<Transaction> {
     createdAt,
     updatedAt,
     deleted,
+    excludeFromReport,
   );
   @override
   bool operator ==(Object other) =>
@@ -2322,7 +2364,8 @@ class Transaction extends DataClass implements Insertable<Transaction> {
           other.note == this.note &&
           other.createdAt == this.createdAt &&
           other.updatedAt == this.updatedAt &&
-          other.deleted == this.deleted);
+          other.deleted == this.deleted &&
+          other.excludeFromReport == this.excludeFromReport);
 }
 
 class TransactionsCompanion extends UpdateCompanion<Transaction> {
@@ -2339,6 +2382,7 @@ class TransactionsCompanion extends UpdateCompanion<Transaction> {
   final Value<DateTime> createdAt;
   final Value<DateTime> updatedAt;
   final Value<bool> deleted;
+  final Value<bool> excludeFromReport;
   final Value<int> rowid;
   const TransactionsCompanion({
     this.id = const Value.absent(),
@@ -2354,6 +2398,7 @@ class TransactionsCompanion extends UpdateCompanion<Transaction> {
     this.createdAt = const Value.absent(),
     this.updatedAt = const Value.absent(),
     this.deleted = const Value.absent(),
+    this.excludeFromReport = const Value.absent(),
     this.rowid = const Value.absent(),
   });
   TransactionsCompanion.insert({
@@ -2370,6 +2415,7 @@ class TransactionsCompanion extends UpdateCompanion<Transaction> {
     required DateTime createdAt,
     required DateTime updatedAt,
     this.deleted = const Value.absent(),
+    this.excludeFromReport = const Value.absent(),
     this.rowid = const Value.absent(),
   }) : id = Value(id),
        date = Value(date),
@@ -2392,6 +2438,7 @@ class TransactionsCompanion extends UpdateCompanion<Transaction> {
     Expression<DateTime>? createdAt,
     Expression<DateTime>? updatedAt,
     Expression<bool>? deleted,
+    Expression<bool>? excludeFromReport,
     Expression<int>? rowid,
   }) {
     return RawValuesInsertable({
@@ -2408,6 +2455,7 @@ class TransactionsCompanion extends UpdateCompanion<Transaction> {
       if (createdAt != null) 'created_at': createdAt,
       if (updatedAt != null) 'updated_at': updatedAt,
       if (deleted != null) 'deleted': deleted,
+      if (excludeFromReport != null) 'exclude_from_report': excludeFromReport,
       if (rowid != null) 'rowid': rowid,
     });
   }
@@ -2426,6 +2474,7 @@ class TransactionsCompanion extends UpdateCompanion<Transaction> {
     Value<DateTime>? createdAt,
     Value<DateTime>? updatedAt,
     Value<bool>? deleted,
+    Value<bool>? excludeFromReport,
     Value<int>? rowid,
   }) {
     return TransactionsCompanion(
@@ -2442,6 +2491,7 @@ class TransactionsCompanion extends UpdateCompanion<Transaction> {
       createdAt: createdAt ?? this.createdAt,
       updatedAt: updatedAt ?? this.updatedAt,
       deleted: deleted ?? this.deleted,
+      excludeFromReport: excludeFromReport ?? this.excludeFromReport,
       rowid: rowid ?? this.rowid,
     );
   }
@@ -2488,6 +2538,9 @@ class TransactionsCompanion extends UpdateCompanion<Transaction> {
     if (deleted.present) {
       map['deleted'] = Variable<bool>(deleted.value);
     }
+    if (excludeFromReport.present) {
+      map['exclude_from_report'] = Variable<bool>(excludeFromReport.value);
+    }
     if (rowid.present) {
       map['rowid'] = Variable<int>(rowid.value);
     }
@@ -2510,6 +2563,7 @@ class TransactionsCompanion extends UpdateCompanion<Transaction> {
           ..write('createdAt: $createdAt, ')
           ..write('updatedAt: $updatedAt, ')
           ..write('deleted: $deleted, ')
+          ..write('excludeFromReport: $excludeFromReport, ')
           ..write('rowid: $rowid')
           ..write(')'))
         .toString();
@@ -4172,6 +4226,7 @@ typedef $$TransactionsTableCreateCompanionBuilder =
       required DateTime createdAt,
       required DateTime updatedAt,
       Value<bool> deleted,
+      Value<bool> excludeFromReport,
       Value<int> rowid,
     });
 typedef $$TransactionsTableUpdateCompanionBuilder =
@@ -4189,6 +4244,7 @@ typedef $$TransactionsTableUpdateCompanionBuilder =
       Value<DateTime> createdAt,
       Value<DateTime> updatedAt,
       Value<bool> deleted,
+      Value<bool> excludeFromReport,
       Value<int> rowid,
     });
 
@@ -4263,6 +4319,11 @@ class $$TransactionsTableFilterComposer
 
   ColumnFilters<bool> get deleted => $composableBuilder(
     column: $table.deleted,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<bool> get excludeFromReport => $composableBuilder(
+    column: $table.excludeFromReport,
     builder: (column) => ColumnFilters(column),
   );
 }
@@ -4340,6 +4401,11 @@ class $$TransactionsTableOrderingComposer
     column: $table.deleted,
     builder: (column) => ColumnOrderings(column),
   );
+
+  ColumnOrderings<bool> get excludeFromReport => $composableBuilder(
+    column: $table.excludeFromReport,
+    builder: (column) => ColumnOrderings(column),
+  );
 }
 
 class $$TransactionsTableAnnotationComposer
@@ -4393,6 +4459,11 @@ class $$TransactionsTableAnnotationComposer
 
   GeneratedColumn<bool> get deleted =>
       $composableBuilder(column: $table.deleted, builder: (column) => column);
+
+  GeneratedColumn<bool> get excludeFromReport => $composableBuilder(
+    column: $table.excludeFromReport,
+    builder: (column) => column,
+  );
 }
 
 class $$TransactionsTableTableManager
@@ -4439,6 +4510,7 @@ class $$TransactionsTableTableManager
                 Value<DateTime> createdAt = const Value.absent(),
                 Value<DateTime> updatedAt = const Value.absent(),
                 Value<bool> deleted = const Value.absent(),
+                Value<bool> excludeFromReport = const Value.absent(),
                 Value<int> rowid = const Value.absent(),
               }) => TransactionsCompanion(
                 id: id,
@@ -4454,6 +4526,7 @@ class $$TransactionsTableTableManager
                 createdAt: createdAt,
                 updatedAt: updatedAt,
                 deleted: deleted,
+                excludeFromReport: excludeFromReport,
                 rowid: rowid,
               ),
           createCompanionCallback:
@@ -4471,6 +4544,7 @@ class $$TransactionsTableTableManager
                 required DateTime createdAt,
                 required DateTime updatedAt,
                 Value<bool> deleted = const Value.absent(),
+                Value<bool> excludeFromReport = const Value.absent(),
                 Value<int> rowid = const Value.absent(),
               }) => TransactionsCompanion.insert(
                 id: id,
@@ -4486,6 +4560,7 @@ class $$TransactionsTableTableManager
                 createdAt: createdAt,
                 updatedAt: updatedAt,
                 deleted: deleted,
+                excludeFromReport: excludeFromReport,
                 rowid: rowid,
               ),
           withReferenceMapper: (p0) => p0
