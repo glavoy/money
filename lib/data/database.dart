@@ -469,15 +469,17 @@ class AppDatabase extends _$AppDatabase {
     return first?.date;
   }
 
-  Future<List<Transaction>> getTransactionsForExport({
-    required String ledgerId,
-  }) {
+  /// Omit [ledgerId] to export transactions across every ledger.
+  Future<List<Transaction>> getTransactionsForExport({String? ledgerId}) {
     final q = select(transactions)
-      ..where((t) => t.deleted.equals(false) & t.ledgerId.equals(ledgerId))
+      ..where((t) => t.deleted.equals(false))
       ..orderBy([
         (t) => OrderingTerm.asc(t.date),
         (t) => OrderingTerm.asc(t.createdAt),
       ]);
+    if (ledgerId != null) {
+      q.where((t) => t.ledgerId.equals(ledgerId));
+    }
     return q.get();
   }
 
