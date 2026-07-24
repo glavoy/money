@@ -324,6 +324,20 @@ class AppDatabase extends _$AppDatabase {
     return true;
   }
 
+  /// Assigns sequential sortOrder values matching [orderedIds]' order.
+  Future<void> reorderAccounts(List<String> orderedIds) async {
+    final now = DateTime.now().toUtc();
+    await batch((batch) {
+      for (var i = 0; i < orderedIds.length; i++) {
+        batch.update(
+          accounts,
+          AccountsCompanion(sortOrder: Value(i), updatedAt: Value(now)),
+          where: (a) => a.id.equals(orderedIds[i]),
+        );
+      }
+    });
+  }
+
   // ---------------------------------------------------------------------
   // Categories
   // ---------------------------------------------------------------------

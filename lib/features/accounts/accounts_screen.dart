@@ -5,6 +5,7 @@ import 'package:intl/intl.dart';
 import '../../data/database.dart';
 import '../../shared/currency.dart';
 import '../../shared/providers.dart';
+import '../../sync/sync_service.dart';
 import '../transactions/transactions_screen.dart'
     show
         confirmDeleteTransaction,
@@ -82,49 +83,91 @@ class AccountsScreen extends ConsumerWidget {
           ),
         ),
         const SizedBox(height: 8),
-        for (final b in balances)
-          Card(
-            child: ListTile(
-              contentPadding: const EdgeInsets.symmetric(
-                horizontal: 16,
-                vertical: 4,
-              ),
-              leading: CircleAvatar(
-                backgroundColor: theme.colorScheme.secondaryContainer,
-                foregroundColor: theme.colorScheme.onSecondaryContainer,
-                child: Icon(switch (b.account.type) {
-                  AccountType.cash => Icons.payments_outlined,
-                  AccountType.bank => Icons.account_balance_outlined,
-                  AccountType.mobileMoney => Icons.phone_android_outlined,
-                  _ => Icons.credit_card_outlined,
-                }, size: 20),
-              ),
-              title: Text(
-                b.account.name,
-                style: const TextStyle(fontWeight: FontWeight.w500),
-              ),
-              subtitle: b.account.currency == 'UGX'
-                  ? null
-                  : Text(
-                      '≈ ${formatMoney(convertWithRate(b.balance, CurrencyX.fromCode(b.account.currency), Currency.ugx, latestRate) ?? 0, Currency.ugx)}',
+        ReorderableListView.builder(
+          shrinkWrap: true,
+          physics: const NeverScrollableScrollPhysics(),
+          buildDefaultDragHandles: false,
+          itemCount: balances.length,
+          onReorderItem: (oldIndex, newIndex) =>
+              _reorder(ref, balances, oldIndex, newIndex),
+          itemBuilder: (context, i) {
+            final b = balances[i];
+            return Card(
+              key: ValueKey(b.account.id),
+              child: ListTile(
+                contentPadding: const EdgeInsets.symmetric(
+                  horizontal: 16,
+                  vertical: 4,
+                ),
+                leading: CircleAvatar(
+                  backgroundColor: theme.colorScheme.secondaryContainer,
+                  foregroundColor: theme.colorScheme.onSecondaryContainer,
+                  child: Icon(switch (b.account.type) {
+                    AccountType.cash => Icons.payments_outlined,
+                    AccountType.bank => Icons.account_balance_outlined,
+                    AccountType.mobileMoney => Icons.phone_android_outlined,
+                    _ => Icons.credit_card_outlined,
+                  }, size: 20),
+                ),
+                title: Text(
+                  b.account.name,
+                  style: const TextStyle(fontWeight: FontWeight.w500),
+                ),
+                subtitle: b.account.currency == 'UGX'
+                    ? null
+                    : Text(
+                        '≈ ${formatMoney(convertWithRate(b.balance, CurrencyX.fromCode(b.account.currency), Currency.ugx, latestRate) ?? 0, Currency.ugx)}',
+                      ),
+                trailing: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(
+                      formatMoney(
+                        b.balance,
+                        CurrencyX.fromCode(b.account.currency),
+                      ),
+                      style: theme.textTheme.titleMedium?.copyWith(
+                        fontWeight: FontWeight.w700,
+                        color: b.balance < 0 ? theme.colorScheme.error : null,
+                      ),
                     ),
-              trailing: Text(
-                formatMoney(b.balance, CurrencyX.fromCode(b.account.currency)),
-                style: theme.textTheme.titleMedium?.copyWith(
-                  fontWeight: FontWeight.w700,
-                  color: b.balance < 0 ? theme.colorScheme.error : null,
+                    ReorderableDragStartListener(
+                      index: i,
+                      child: Padding(
+                        padding: const EdgeInsets.only(left: 8),
+                        child: Icon(
+                          Icons.drag_handle,
+                          color: theme.colorScheme.onSurfaceVariant,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+                onTap: () => Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (_) => AccountLedgerScreen(account: b.account),
+                  ),
                 ),
               ),
-              onTap: () => Navigator.push(
-                context,
-                MaterialPageRoute(
-                  builder: (_) => AccountLedgerScreen(account: b.account),
-                ),
-              ),
-            ),
-          ),
+            );
+          },
+        ),
       ],
     );
+  }
+
+  Future<void> _reorder(
+    WidgetRef ref,
+    List<AccountBalance> balances,
+    int oldIndex,
+    int newIndex,
+  ) async {
+    final ids = [for (final b in balances) b.account.id];
+    final id = ids.removeAt(oldIndex);
+    ids.insert(newIndex, id);
+    await ref.read(databaseProvider).reorderAccounts(ids);
+    ref.read(syncServiceProvider).syncSilently();
   }
 }
 

@@ -412,6 +412,44 @@ void main() {
       );
       expect(accounts.any((a) => a.id == 'acc-cash'), true);
     });
+
+    test(
+      'reorderAccounts assigns sortOrder matching the given order',
+      () async {
+        final db = _openTestDb();
+        addTearDown(db.close);
+
+        final before = await db.getAccounts(
+          ledgerId: personalLedgerId,
+          includeArchived: true,
+        );
+        final reversedIds = [for (final a in before.reversed) a.id];
+
+        await db.reorderAccounts(reversedIds);
+
+        final after = await db.getAccounts(
+          ledgerId: personalLedgerId,
+          includeArchived: true,
+        );
+        expect(
+          [for (final a in after) a.id],
+          reversedIds,
+          reason:
+              'getAccounts orders by sortOrder, which should now match '
+              'the order passed to reorderAccounts',
+        );
+        expect(
+          after.every(
+            (a) => a.updatedAt.isAfter(
+              before.singleWhere((b) => b.id == a.id).updatedAt,
+            ),
+          ),
+          true,
+          reason:
+              'reordering should bump updatedAt so it syncs to other devices',
+        );
+      },
+    );
   });
 
   group('categories', () {
