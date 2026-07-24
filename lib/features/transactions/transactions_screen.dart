@@ -21,6 +21,7 @@ class _TransactionsScreenState extends ConsumerState<TransactionsScreen> {
 
   String? _accountId;
   String? _categoryId;
+  String? _kind;
   _DatePreset _datePreset = _DatePreset.recentMonths;
   DateTimeRange? _customRange;
   int _recentMonths = _historyPageMonths;
@@ -28,6 +29,7 @@ class _TransactionsScreenState extends ConsumerState<TransactionsScreen> {
   bool get _hasFilters =>
       _accountId != null ||
       _categoryId != null ||
+      _kind != null ||
       _datePreset != _DatePreset.recentMonths ||
       _recentMonths != _historyPageMonths;
 
@@ -45,6 +47,20 @@ class _TransactionsScreenState extends ConsumerState<TransactionsScreen> {
 
     return Column(
       children: [
+        Padding(
+          padding: const EdgeInsets.fromLTRB(12, 4, 12, 0),
+          child: SegmentedButton<String?>(
+            segments: const [
+              ButtonSegment(value: null, label: Text('All')),
+              ButtonSegment(value: TxKind.income, label: Text('Income')),
+              ButtonSegment(value: TxKind.expense, label: Text('Expense')),
+              ButtonSegment(value: TxKind.transfer, label: Text('Transfer')),
+            ],
+            selected: {_kind},
+            showSelectedIcon: false,
+            onSelectionChanged: (s) => setState(() => _kind = s.first),
+          ),
+        ),
         Padding(
           padding: const EdgeInsets.fromLTRB(12, 4, 12, 4),
           child: Row(
@@ -107,6 +123,7 @@ class _TransactionsScreenState extends ConsumerState<TransactionsScreen> {
                   onPressed: () => setState(() {
                     _accountId = null;
                     _categoryId = null;
+                    _kind = null;
                     _datePreset = _DatePreset.recentMonths;
                     _customRange = null;
                     _recentMonths = _historyPageMonths;
@@ -135,6 +152,7 @@ class _TransactionsScreenState extends ConsumerState<TransactionsScreen> {
                     ),
               accountId: _accountId,
               categoryId: _categoryId,
+              kind: _kind,
               limit: null,
             ),
             builder: (context, snapshot) {
