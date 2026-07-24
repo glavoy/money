@@ -469,8 +469,12 @@ class AppDatabase extends _$AppDatabase {
     return first?.date;
   }
 
-  /// Omit [ledgerId] to export transactions across every ledger.
-  Future<List<Transaction>> getTransactionsForExport({String? ledgerId}) {
+  /// Omit [ledgerId] to export transactions across every ledger. [accountId]
+  /// matches both sides of a transfer, mirroring watchTransactions.
+  Future<List<Transaction>> getTransactionsForExport({
+    String? ledgerId,
+    String? accountId,
+  }) {
     final q = select(transactions)
       ..where((t) => t.deleted.equals(false))
       ..orderBy([
@@ -479,6 +483,11 @@ class AppDatabase extends _$AppDatabase {
       ]);
     if (ledgerId != null) {
       q.where((t) => t.ledgerId.equals(ledgerId));
+    }
+    if (accountId != null) {
+      q.where(
+        (t) => t.accountId.equals(accountId) | t.toAccountId.equals(accountId),
+      );
     }
     return q.get();
   }

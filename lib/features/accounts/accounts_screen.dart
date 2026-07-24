@@ -1,3 +1,6 @@
+import 'dart:convert';
+
+import 'package:file_picker/file_picker.dart' as file_picker;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
@@ -6,6 +9,7 @@ import '../../data/database.dart';
 import '../../shared/currency.dart';
 import '../../shared/providers.dart';
 import '../../sync/sync_service.dart';
+import '../export/csv_export.dart';
 import '../transactions/transactions_screen.dart'
     show
         confirmDeleteTransaction,
@@ -172,13 +176,22 @@ class AccountsScreen extends ConsumerWidget {
 }
 
 /// Ledger for one account — replaces the per-account spreadsheet tabs.
-class AccountLedgerScreen extends ConsumerWidget {
+class AccountLedgerScreen extends ConsumerStatefulWidget {
   const AccountLedgerScreen({super.key, required this.account});
 
   final Account account;
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<AccountLedgerScreen> createState() =>
+      _AccountLedgerScreenState();
+}
+
+class _AccountLedgerScreenState extends ConsumerState<AccountLedgerScreen> {
+  bool _exporting = false;
+
+  @override
+  Widget build(BuildContext context) {
+    final account = widget.account;
     final theme = Theme.of(context);
     final db = ref.watch(databaseProvider);
     final currency = CurrencyX.fromCode(account.currency);
@@ -188,7 +201,22 @@ class AccountLedgerScreen extends ConsumerWidget {
     final categoryById = {for (final c in categories) c.id: c};
 
     return Scaffold(
-      appBar: AppBar(title: Text(account.name)),
+      appBar: AppBar(
+        title: Text(account.name),
+        actions: [
+          IconButton(
+            tooltip: 'Download CSV',
+            icon: _exporting
+                ? const SizedBox(
+                    width: 20,
+                    height: 20,
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  )
+                : const Icon(Icons.download_outlined),
+            onPressed: _exporting ? null : _downloadCsv,
+          ),
+        ],
+      ),
       body: StreamBuilder<List<Transaction>>(
         stream: db.watchTransactions(
           ledgerId: account.ledgerId,
@@ -347,4 +375,56 @@ class AccountLedgerScreen extends ConsumerWidget {
     if (t.accountId != accountId) return 0;
     return t.kind == TxKind.income ? t.amount : -t.amount;
   }
+
+  Future<void> _downloadCsv() async {
+    final messenger = ScaffoldMessenger.of(context);
+    final account = widget.account;
+    setState(() => _exporting = true);
+    try {
+      final db = ref.read(databaseProvider);
+      final ledgers = await db.getLedgers(includeArchived: true);
+      final accounts = await db.getAccounts(
+        ledgerId: account.ledgerId,
+        includeArchived: true,
+      );
+      final categories = await db.getCategories(
+        ledgerId: account.ledgerId,
+        includeArchived: true,
+      );
+      final transactions = await db.getTransactionsForExport(
+        ledgerId: account.ledgerId,
+        accountId: account.id,
+      );
+      final content = transactionsToCsv(
+        transactions,
+        ledgerNames: {for (final l in ledgers) l.id: l.name},
+        accountNames: {for (final a in accounts) a.id: a.name},
+        categoryNames: {for (final c in categories) c.id: c.name},
+      );
+      final fileName = '${_sanitizeFileName(account.name)}_transactions.csv';
+      final path = await file_picker.FilePicker.saveFile(
+        dialogTitle: 'Save $fileName',
+        fileName: fileName,
+        type: file_picker.FileType.custom,
+        allowedExtensions: const ['csv'],
+        bytes: utf8.encode(content),
+      );
+      if (!mounted) return;
+      messenger.showSnackBar(
+        SnackBar(
+          content: Text(
+            path == null ? 'Export cancelled.' : 'Saved $fileName.',
+          ),
+        ),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      messenger.showSnackBar(SnackBar(content: Text('Export failed: $e')));
+    } finally {
+      if (mounted) setState(() => _exporting = false);
+    }
+  }
+
+  static String _sanitizeFileName(String name) =>
+      name.replaceAll(RegExp(r'[^a-zA-Z0-9 _-]'), '_');
 }

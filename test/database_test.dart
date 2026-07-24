@@ -414,6 +414,55 @@ void main() {
     });
 
     test(
+      'getTransactionsForExport with accountId includes transfers in and out',
+      () async {
+        final db = _openTestDb();
+        addTearDown(db.close);
+        final day = DateTime.utc(2026, 7, 1);
+
+        await db.upsertTransaction(
+          _tx(
+            id: 'tx-out',
+            date: day,
+            kind: TxKind.expense,
+            amount: 5000,
+            accountId: 'acc-cash',
+            categoryId: seedCategoryId('food', CategoryKind.expense),
+          ),
+        );
+        await db.upsertTransaction(
+          _tx(
+            id: 'tx-transfer-in',
+            date: day,
+            kind: TxKind.transfer,
+            amount: 20000,
+            accountId: 'acc-mtn',
+            toAccountId: 'acc-cash',
+            toAmount: 20000,
+          ),
+        );
+        await db.upsertTransaction(
+          _tx(
+            id: 'tx-unrelated',
+            date: day,
+            kind: TxKind.expense,
+            amount: 1000,
+            accountId: 'acc-mtn',
+            categoryId: seedCategoryId('food', CategoryKind.expense),
+          ),
+        );
+
+        final result = await db.getTransactionsForExport(accountId: 'acc-cash');
+
+        expect(
+          result.map((t) => t.id),
+          containsAll(['tx-out', 'tx-transfer-in']),
+        );
+        expect(result.map((t) => t.id), isNot(contains('tx-unrelated')));
+      },
+    );
+
+    test(
       'reorderAccounts assigns sortOrder matching the given order',
       () async {
         final db = _openTestDb();
