@@ -76,6 +76,12 @@
               "type": "text",
               "nullable": false,
               "default": "'ledger-personal'::text"
+            },
+            {
+              "column": "server_updated_at",
+              "type": "timestamp with time zone",
+              "nullable": false,
+              "default": "clock_timestamp()"
             }
           ]
         },
@@ -141,6 +147,12 @@
               "type": "text",
               "nullable": false,
               "default": "'ledger-personal'::text"
+            },
+            {
+              "column": "server_updated_at",
+              "type": "timestamp with time zone",
+              "nullable": false,
+              "default": "clock_timestamp()"
             }
           ]
         },
@@ -200,6 +212,12 @@
               "type": "boolean",
               "nullable": false,
               "default": "false"
+            },
+            {
+              "column": "server_updated_at",
+              "type": "timestamp with time zone",
+              "nullable": false,
+              "default": "clock_timestamp()"
             }
           ]
         },
@@ -247,6 +265,12 @@
               "type": "boolean",
               "nullable": false,
               "default": "false"
+            },
+            {
+              "column": "server_updated_at",
+              "type": "timestamp with time zone",
+              "nullable": false,
+              "default": "clock_timestamp()"
             }
           ]
         },
@@ -330,6 +354,18 @@
               "type": "text",
               "nullable": false,
               "default": "'ledger-personal'::text"
+            },
+            {
+              "column": "server_updated_at",
+              "type": "timestamp with time zone",
+              "nullable": false,
+              "default": "clock_timestamp()"
+            },
+            {
+              "column": "exclude_from_report",
+              "type": "boolean",
+              "nullable": false,
+              "default": "false"
             }
           ]
         }
@@ -1364,6 +1400,13 @@
       ],
       "functions": [
         {
+          "name": "money_stamp_server_updated_at",
+          "args": "",
+          "returns": "trigger",
+          "security_definer": false,
+          "definition": "CREATE OR REPLACE FUNCTION public.money_stamp_server_updated_at()\n RETURNS trigger\n LANGUAGE plpgsql\nAS $function$\nbegin\n  if tg_op = 'UPDATE' and new.updated_at < old.updated_at then\n    return old;\n  end if;\n  new.server_updated_at := clock_timestamp();\n  return new;\nend;\n$function$\n"
+        },
+        {
           "name": "rls_auto_enable",
           "args": "",
           "returns": "event_trigger",
@@ -1384,6 +1427,11 @@
           "definition": "CREATE UNIQUE INDEX accounts_pkey ON public.accounts USING btree (id)"
         },
         {
+          "table": "accounts",
+          "index": "accounts_server_updated_at_idx",
+          "definition": "CREATE INDEX accounts_server_updated_at_idx ON public.accounts USING btree (server_updated_at)"
+        },
+        {
           "table": "categories",
           "index": "categories_ledger_id_idx",
           "definition": "CREATE INDEX categories_ledger_id_idx ON public.categories USING btree (ledger_id)"
@@ -1392,6 +1440,11 @@
           "table": "categories",
           "index": "categories_pkey",
           "definition": "CREATE UNIQUE INDEX categories_pkey ON public.categories USING btree (id)"
+        },
+        {
+          "table": "categories",
+          "index": "categories_server_updated_at_idx",
+          "definition": "CREATE INDEX categories_server_updated_at_idx ON public.categories USING btree (server_updated_at)"
         },
         {
           "table": "fx_rates",
@@ -1405,6 +1458,11 @@
         },
         {
           "table": "fx_rates",
+          "index": "fx_rates_server_updated_at_idx",
+          "definition": "CREATE INDEX fx_rates_server_updated_at_idx ON public.fx_rates USING btree (server_updated_at)"
+        },
+        {
+          "table": "fx_rates",
           "index": "fx_rates_updated_at_idx",
           "definition": "CREATE INDEX fx_rates_updated_at_idx ON public.fx_rates USING btree (updated_at)"
         },
@@ -1412,6 +1470,11 @@
           "table": "ledgers",
           "index": "ledgers_pkey",
           "definition": "CREATE UNIQUE INDEX ledgers_pkey ON public.ledgers USING btree (id)"
+        },
+        {
+          "table": "ledgers",
+          "index": "ledgers_server_updated_at_idx",
+          "definition": "CREATE INDEX ledgers_server_updated_at_idx ON public.ledgers USING btree (server_updated_at)"
         },
         {
           "table": "transactions",
@@ -1430,12 +1493,88 @@
         },
         {
           "table": "transactions",
+          "index": "transactions_server_updated_at_idx",
+          "definition": "CREATE INDEX transactions_server_updated_at_idx ON public.transactions USING btree (server_updated_at)"
+        },
+        {
+          "table": "transactions",
           "index": "transactions_updated_at_idx",
           "definition": "CREATE INDEX transactions_updated_at_idx ON public.transactions USING btree (updated_at)"
         }
       ],
       "enums": null,
-      "triggers": null
+      "triggers": [
+        {
+          "table": "accounts",
+          "trigger": "accounts_stamp_server_updated_at",
+          "event": "INSERT",
+          "timing": "BEFORE",
+          "statement": "EXECUTE FUNCTION money_stamp_server_updated_at()"
+        },
+        {
+          "table": "accounts",
+          "trigger": "accounts_stamp_server_updated_at",
+          "event": "UPDATE",
+          "timing": "BEFORE",
+          "statement": "EXECUTE FUNCTION money_stamp_server_updated_at()"
+        },
+        {
+          "table": "categories",
+          "trigger": "categories_stamp_server_updated_at",
+          "event": "INSERT",
+          "timing": "BEFORE",
+          "statement": "EXECUTE FUNCTION money_stamp_server_updated_at()"
+        },
+        {
+          "table": "categories",
+          "trigger": "categories_stamp_server_updated_at",
+          "event": "UPDATE",
+          "timing": "BEFORE",
+          "statement": "EXECUTE FUNCTION money_stamp_server_updated_at()"
+        },
+        {
+          "table": "fx_rates",
+          "trigger": "fx_rates_stamp_server_updated_at",
+          "event": "UPDATE",
+          "timing": "BEFORE",
+          "statement": "EXECUTE FUNCTION money_stamp_server_updated_at()"
+        },
+        {
+          "table": "fx_rates",
+          "trigger": "fx_rates_stamp_server_updated_at",
+          "event": "INSERT",
+          "timing": "BEFORE",
+          "statement": "EXECUTE FUNCTION money_stamp_server_updated_at()"
+        },
+        {
+          "table": "ledgers",
+          "trigger": "ledgers_stamp_server_updated_at",
+          "event": "INSERT",
+          "timing": "BEFORE",
+          "statement": "EXECUTE FUNCTION money_stamp_server_updated_at()"
+        },
+        {
+          "table": "ledgers",
+          "trigger": "ledgers_stamp_server_updated_at",
+          "event": "UPDATE",
+          "timing": "BEFORE",
+          "statement": "EXECUTE FUNCTION money_stamp_server_updated_at()"
+        },
+        {
+          "table": "transactions",
+          "trigger": "transactions_stamp_server_updated_at",
+          "event": "INSERT",
+          "timing": "BEFORE",
+          "statement": "EXECUTE FUNCTION money_stamp_server_updated_at()"
+        },
+        {
+          "table": "transactions",
+          "trigger": "transactions_stamp_server_updated_at",
+          "event": "UPDATE",
+          "timing": "BEFORE",
+          "statement": "EXECUTE FUNCTION money_stamp_server_updated_at()"
+        }
+      ]
     }
   }
 ]

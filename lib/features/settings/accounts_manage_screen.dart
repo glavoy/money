@@ -45,7 +45,7 @@ class AccountsManageScreen extends ConsumerWidget {
   ) async {
     final nameController = TextEditingController(text: existing?.name ?? '');
     final openingController = TextEditingController(
-      text: existing?.openingBalance.toStringAsFixed(0) ?? '0',
+      text: existing == null ? '0' : trimmedAmount(existing.openingBalance),
     );
     var type = existing?.type ?? AccountType.cash;
     var currency = existing?.currency ?? 'UGX';
@@ -308,4 +308,15 @@ class _AccountTile extends ConsumerWidget {
       await _setArchived(ref, true);
     }
   }
+}
+
+/// Renders [amount] with up to 2 decimal places, dropping only trailing
+/// zeros — never real precision (unlike toStringAsFixed(0), which always
+/// truncates to a whole number regardless of currency).
+@visibleForTesting
+String trimmedAmount(double amount) {
+  final rounded = double.parse(amount.toStringAsFixed(2));
+  return rounded == rounded.roundToDouble()
+      ? rounded.toStringAsFixed(0)
+      : rounded.toStringAsFixed(2);
 }
