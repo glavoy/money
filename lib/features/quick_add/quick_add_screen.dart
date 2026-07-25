@@ -673,7 +673,7 @@ class _DaySummary extends ConsumerWidget {
     final theme = Theme.of(context);
     final db = ref.watch(databaseProvider);
     final ledgerId = ref.watch(selectedLedgerProvider);
-    final accounts = ref.watch(accountsProvider).value ?? [];
+    final accounts = ref.watch(allAccountsProvider).value ?? [];
     final categories = ref.watch(allCategoriesProvider).value ?? [];
     return StreamBuilder<List<Transaction>>(
       stream: db.watchTransactions(

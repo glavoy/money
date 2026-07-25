@@ -50,6 +50,18 @@ final accountsProvider = StreamProvider<List<Account>>((ref) {
   return ref.watch(databaseProvider).watchAccounts(ledgerId: ledgerId);
 });
 
+/// Includes archived accounts (e.g. imported-history buckets) — use this
+/// wherever a past transaction's account needs to be resolved for display
+/// (name, currency), since the transaction may reference an account no
+/// longer offered as a picker choice. Use [accountsProvider] instead when
+/// listing accounts for the user to choose among.
+final allAccountsProvider = StreamProvider<List<Account>>((ref) {
+  final ledgerId = ref.watch(selectedLedgerProvider);
+  return ref
+      .watch(databaseProvider)
+      .watchAccounts(ledgerId: ledgerId, includeArchived: true);
+});
+
 final balancesProvider = StreamProvider<List<AccountBalance>>((ref) {
   final ledgerId = ref.watch(selectedLedgerProvider);
   return ref.watch(databaseProvider).watchBalances(ledgerId: ledgerId);

@@ -39,9 +39,14 @@ class _TransactionsScreenState extends ConsumerState<TransactionsScreen> {
     final db = ref.watch(databaseProvider);
     final ledgerId = ref.watch(selectedLedgerProvider);
     final accounts = ref.watch(accountsProvider).value ?? [];
+    final allAccounts = ref.watch(allAccountsProvider).value ?? [];
     final categories = ref.watch(allCategoriesProvider).value ?? [];
     final latestRate = ref.watch(latestRateProvider).value;
-    final accountById = {for (final a in accounts) a.id: a};
+    // Resolves each transaction's own account (including archived ones,
+    // e.g. imported-history buckets) so its true currency and name are
+    // shown correctly. `accounts` (non-archived) is used below only for
+    // the account filter picker.
+    final accountById = {for (final a in allAccounts) a.id: a};
     final categoryById = {for (final c in categories) c.id: c};
     final range = _effectiveRange();
 

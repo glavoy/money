@@ -195,7 +195,7 @@ class _AccountLedgerScreenState extends ConsumerState<AccountLedgerScreen> {
     final theme = Theme.of(context);
     final db = ref.watch(databaseProvider);
     final currency = CurrencyX.fromCode(account.currency);
-    final accounts = ref.watch(accountsProvider).value ?? [];
+    final accounts = ref.watch(allAccountsProvider).value ?? [];
     final categories = ref.watch(allCategoriesProvider).value ?? [];
     final accountById = {for (final a in accounts) a.id: a};
     final categoryById = {for (final c in categories) c.id: c};
