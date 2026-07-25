@@ -494,7 +494,28 @@ class _TransactionTile extends ConsumerWidget {
       onDismissed: (_) => deleteTransactionWithSync(ref, tx.id),
       child: ListTile(
         leading: KindAvatar(kind: tx.kind),
-        title: Text(title, style: const TextStyle(fontWeight: FontWeight.w500)),
+        title: Row(
+          children: [
+            Flexible(
+              child: Text(
+                title,
+                overflow: TextOverflow.ellipsis,
+                style: const TextStyle(fontWeight: FontWeight.w500),
+              ),
+            ),
+            if (tx.excludeFromReport) ...[
+              const SizedBox(width: 6),
+              Tooltip(
+                message: 'Excluded from reports',
+                child: Icon(
+                  Icons.visibility_off_outlined,
+                  size: 14,
+                  color: theme.colorScheme.onSurfaceVariant,
+                ),
+              ),
+            ],
+          ],
+        ),
         subtitle: subtitleParts.isEmpty
             ? null
             : Text(subtitleParts.join(' · ')),
