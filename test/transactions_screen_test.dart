@@ -90,4 +90,41 @@ void main() {
       await tearDownTree(tester);
     },
   );
+
+  testWidgets(
+    'editing a USD transaction pre-fills the real amount, not a rounded one',
+    (tester) async {
+      final db = await pumpApp(tester);
+      final now = DateTime.now().toUtc();
+
+      await db.upsertTransaction(
+        TransactionsCompanion.insert(
+          id: 'tx-usd-cents',
+          ledgerId: const Value(personalLedgerId),
+          date: DateTime.utc(now.year, now.month, now.day),
+          kind: TxKind.expense,
+          amount: 165.99,
+          accountId: 'acc-visa',
+          categoryId: const Value('cat-expense-food'),
+          createdAt: now,
+          updatedAt: now,
+        ),
+      );
+      await tester.pump();
+
+      await tester.tap(find.text('History'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.textContaining('165.99'));
+      await tester.pumpAndSettle();
+
+      final amountField = tester.widget<TextField>(
+        find.byWidgetPredicate(
+          (w) => w is TextField && w.decoration?.labelText == 'Amount',
+        ),
+      );
+      expect(amountField.controller?.text, '165.99');
+
+      await tearDownTree(tester);
+    },
+  );
 }

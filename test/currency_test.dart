@@ -1,5 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:money/features/settings/accounts_manage_screen.dart';
+import 'package:money/shared/currency.dart';
 
 void main() {
   group('trimmedAmount', () {

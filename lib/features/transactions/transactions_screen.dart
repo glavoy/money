@@ -607,10 +607,10 @@ Future<void> showEditTransactionSheet(
   if (!context.mounted) return;
 
   final amountController = TextEditingController(
-    text: tx.amount.toStringAsFixed(0),
+    text: trimmedAmount(tx.amount),
   );
   final toAmountController = TextEditingController(
-    text: tx.toAmount?.toStringAsFixed(0) ?? '',
+    text: tx.toAmount == null ? '' : trimmedAmount(tx.toAmount!),
   );
   final noteController = TextEditingController(text: tx.note ?? '');
   var date = tx.date;

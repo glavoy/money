@@ -28,6 +28,19 @@ String formatMoney(double amount, Currency currency, {bool withCode = true}) {
   return withCode ? '$formatted ${currency.code}' : formatted;
 }
 
+/// Renders [amount] with up to 2 decimal places for an editable text field,
+/// dropping only trailing zeros — never real precision. Use this (not
+/// toStringAsFixed(0)) whenever pre-filling a money field from a stored
+/// value: toStringAsFixed(0) always truncates to a whole number regardless
+/// of currency, silently dropping cents from USD/CAD amounts if the field
+/// is saved without every digit being re-typed.
+String trimmedAmount(double amount) {
+  final rounded = double.parse(amount.toStringAsFixed(2));
+  return rounded == rounded.roundToDouble()
+      ? rounded.toStringAsFixed(0)
+      : rounded.toStringAsFixed(2);
+}
+
 /// Converts between UGX/USD/CAD using an FX rate row.
 ///
 /// Returns null when the rate needed for the pair is missing.

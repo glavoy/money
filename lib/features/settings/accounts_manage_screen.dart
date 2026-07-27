@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../data/database.dart';
+import '../../shared/currency.dart';
 import '../../shared/providers.dart';
 import '../../sync/sync_service.dart';
 
@@ -308,15 +309,4 @@ class _AccountTile extends ConsumerWidget {
       await _setArchived(ref, true);
     }
   }
-}
-
-/// Renders [amount] with up to 2 decimal places, dropping only trailing
-/// zeros — never real precision (unlike toStringAsFixed(0), which always
-/// truncates to a whole number regardless of currency).
-@visibleForTesting
-String trimmedAmount(double amount) {
-  final rounded = double.parse(amount.toStringAsFixed(2));
-  return rounded == rounded.roundToDouble()
-      ? rounded.toStringAsFixed(0)
-      : rounded.toStringAsFixed(2);
 }

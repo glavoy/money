@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
 
 import '../../data/database.dart';
+import '../../shared/currency.dart';
 import '../../shared/providers.dart';
 import '../../sync/fx_fetcher.dart';
 import '../../sync/sync_service.dart';
@@ -139,10 +140,10 @@ class _FxRatesScreenState extends ConsumerState<FxRatesScreen> {
     final db = ref.read(databaseProvider);
     var date = existing?.date ?? DateTime.now();
     final usdUgxController = TextEditingController(
-      text: existing?.usdUgx?.toStringAsFixed(0) ?? '',
+      text: existing?.usdUgx == null ? '' : trimmedAmount(existing!.usdUgx!),
     );
     final cadUgxController = TextEditingController(
-      text: existing?.cadUgx?.toStringAsFixed(0) ?? '',
+      text: existing?.cadUgx == null ? '' : trimmedAmount(existing!.cadUgx!),
     );
     await showDialog<void>(
       context: context,
