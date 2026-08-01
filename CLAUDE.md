@@ -43,6 +43,15 @@ the checks to run before considering work done.
   `transactions`, `accounts`, `reports`, `settings`, `import`, `export`.
   Keep feature-specific UI inside its folder; promote logic to `shared/`
   only when a second feature needs it.
+- **All transaction entry and editing goes through one sheet**,
+  `showTransactionSheet` in `lib/features/quick_add/transaction_sheet.dart`
+  (`tx: null` creates, passing a `tx` edits — the same "null means create"
+  convention the settings editors use). It is opened from the bottom nav's
+  add slot, an account's ledger (pre-selecting that account), and History.
+  There is deliberately no second entry form: amounts use a custom keypad
+  rather than the system keyboard, because the whole form does not fit
+  above a system keyboard on a phone. Don't reintroduce a separate
+  add-vs-edit form.
 
 ### Data model (`lib/data/database.dart`)
 
@@ -145,7 +154,7 @@ CSV shape the app expects — run it manually outside the Flutter toolchain.
 - Add or update tests when changing import logic, database behavior, sync
   behavior, reports, or primary user flows (`test/` mirrors these:
   `csv_import_test.dart`, `database_test.dart`, `fx_fetcher_test.dart`,
-  `quick_add_flow_test.dart`, `report_test.dart`, etc.). Tests should not
+  `transaction_sheet_test.dart`, `report_test.dart`, etc.). Tests should not
   require live Supabase credentials or network access.
 - Never commit `config/sync_config.json`, build output, or personal
   spreadsheet files.

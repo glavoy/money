@@ -74,9 +74,7 @@ void main() {
       );
       await tester.pump();
 
-      await tester.tap(find.text('History'));
-      await tester.pumpAndSettle();
-
+      // History is the landing tab, so no navigation needed.
       // The archived import date (2020) is outside the default recent-months
       // filter, so switch to all-time before the entry becomes visible.
       await tester.tap(find.text('Last 12 months'));
@@ -110,19 +108,16 @@ void main() {
           updatedAt: now,
         ),
       );
-      await tester.pump();
-
-      await tester.tap(find.text('History'));
       await tester.pumpAndSettle();
+
       await tester.tap(find.textContaining('165.99'));
       await tester.pumpAndSettle();
 
-      final amountField = tester.widget<TextField>(
-        find.byWidgetPredicate(
-          (w) => w is TextField && w.decoration?.labelText == 'Amount',
-        ),
+      // The sheet's keypad display carries the full stored precision.
+      final display = tester.widget<Text>(
+        find.byKey(const ValueKey('amount-display')),
       );
-      expect(amountField.controller?.text, '165.99');
+      expect(display.data, '−165.99 USD');
 
       await tearDownTree(tester);
     },

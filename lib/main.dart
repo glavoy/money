@@ -5,7 +5,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'data/database.dart';
 import 'features/accounts/accounts_screen.dart';
-import 'features/quick_add/quick_add_screen.dart';
+import 'features/quick_add/transaction_sheet.dart';
 import 'features/reports/reports_screen.dart';
 import 'features/settings/settings_screen.dart';
 import 'features/transactions/transactions_screen.dart';
@@ -130,16 +130,14 @@ class _HomeShellState extends ConsumerState<HomeShell>
     with WidgetsBindingObserver {
   static const _periodicSyncInterval = Duration(minutes: 5);
 
+  /// Nav slot 2 is the add button, not a tab, so [_index] never takes that
+  /// value — see [_onDestinationSelected].
+  static const _addDestinationIndex = 2;
+
   int _index = 0;
   Timer? _periodicSyncTimer;
 
-  static const _titles = [
-    'Money',
-    'History',
-    'Accounts',
-    'Reports',
-    'Settings',
-  ];
+  static const _titles = ['History', 'Accounts', '', 'Reports', 'Settings'];
 
   @override
   void initState() {
@@ -185,9 +183,9 @@ class _HomeShellState extends ConsumerState<HomeShell>
   @override
   Widget build(BuildContext context) {
     const screens = [
-      QuickAddScreen(),
       TransactionsScreen(),
       AccountsScreen(),
+      SizedBox.shrink(), // Nav slot 2 opens the add sheet; never shown.
       ReportsScreen(),
       SettingsScreen(),
     ];
@@ -196,13 +194,8 @@ class _HomeShellState extends ConsumerState<HomeShell>
       body: SafeArea(child: screens[_index]),
       bottomNavigationBar: NavigationBar(
         selectedIndex: _index,
-        onDestinationSelected: (i) => setState(() => _index = i),
+        onDestinationSelected: _onDestinationSelected,
         destinations: const [
-          NavigationDestination(
-            icon: Icon(Icons.add_circle_outline),
-            selectedIcon: Icon(Icons.add_circle),
-            label: 'Add',
-          ),
           NavigationDestination(
             icon: Icon(Icons.receipt_long_outlined),
             selectedIcon: Icon(Icons.receipt_long),
@@ -212,6 +205,10 @@ class _HomeShellState extends ConsumerState<HomeShell>
             icon: Icon(Icons.account_balance_wallet_outlined),
             selectedIcon: Icon(Icons.account_balance_wallet),
             label: 'Accounts',
+          ),
+          NavigationDestination(
+            icon: Icon(Icons.add_circle, size: 30),
+            label: 'Add',
           ),
           NavigationDestination(
             icon: Icon(Icons.bar_chart_outlined),
@@ -226,6 +223,16 @@ class _HomeShellState extends ConsumerState<HomeShell>
         ],
       ),
     );
+  }
+
+  /// The add slot opens the entry sheet over whatever tab you are on, rather
+  /// than navigating, so the selected tab is left untouched.
+  void _onDestinationSelected(int i) {
+    if (i == _addDestinationIndex) {
+      showTransactionSheet(context, ref);
+      return;
+    }
+    setState(() => _index = i);
   }
 }
 

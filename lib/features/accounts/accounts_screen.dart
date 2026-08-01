@@ -10,11 +10,7 @@ import '../../shared/currency.dart';
 import '../../shared/providers.dart';
 import '../../sync/sync_service.dart';
 import '../export/csv_export.dart';
-import '../transactions/transactions_screen.dart'
-    show
-        confirmDeleteTransaction,
-        deleteTransactionWithSync,
-        showEditTransactionSheet;
+import '../quick_add/transaction_sheet.dart';
 
 class AccountsScreen extends ConsumerWidget {
   const AccountsScreen({super.key});
@@ -217,6 +213,12 @@ class _AccountLedgerScreenState extends ConsumerState<AccountLedgerScreen> {
           ),
         ],
       ),
+      floatingActionButton: FloatingActionButton(
+        tooltip: 'Add transaction',
+        onPressed: () =>
+            showTransactionSheet(context, ref, initialAccountId: account.id),
+        child: const Icon(Icons.add),
+      ),
       body: StreamBuilder<List<Transaction>>(
         stream: db.watchTransactions(
           ledgerId: account.ledgerId,
@@ -277,7 +279,8 @@ class _AccountLedgerScreenState extends ConsumerState<AccountLedgerScreen> {
                         ),
                       )
                     : ListView.builder(
-                        padding: const EdgeInsets.only(bottom: 16),
+                        // Clears the add-transaction FAB.
+                        padding: const EdgeInsets.only(bottom: 88),
                         itemCount: txs.length,
                         itemBuilder: (context, i) {
                           final t = txs[i];
@@ -353,7 +356,7 @@ class _AccountLedgerScreenState extends ConsumerState<AccountLedgerScreen> {
                               ],
                             ),
                             onTap: () =>
-                                showEditTransactionSheet(context, ref, t),
+                                showTransactionSheet(context, ref, tx: t),
                           );
                         },
                       ),

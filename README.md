@@ -6,10 +6,12 @@ SQLite via drift) with optional Supabase sync between devices.
 
 ## Features
 
-- **Quick Add** — expense / income / transfer entry with category grid and
-  account chips; remembers your last account; shows the day's entries and total.
-- **History** — all transactions grouped by day, filterable by date range,
-  account, and category; tap to edit, swipe left to delete.
+- **Entry sheet** — one keypad-driven sheet for adding and editing
+  expense / income / transfer, opened from the nav's add button, an account's
+  ledger (which pre-selects that account), or History. Categories are a
+  usage-ranked grid; remembers your last account.
+- **History** — all transactions grouped by day, filterable by kind, date
+  range, account, and category; tap to edit, swipe left to delete.
 - **Accounts** — live balances for Cash, Banks, Mobile Money, etc.
 - **Reports** — month / quarter / year
 - **Exchange rates** — fetched automatically from open.er-api.com, or entered manually (manual always wins).
@@ -60,8 +62,8 @@ Conflicts resolve as last-write-wins per row; deletes are soft and propagate.
 ```
 lib/
   data/       drift database, schema, seed accounts/categories
-  features/   one folder per screen (quick_add, transactions, accounts,
-              reports, settings, import)
+  features/   one folder per screen (quick_add — the entry sheet,
+              transactions, accounts, reports, settings, import)
   shared/     currency + FX conversion, riverpod providers
   sync/       Supabase sync service, FX rate fetcher
 supabase/schema.sql   one-time Supabase setup

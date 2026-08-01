@@ -1,4 +1,3 @@
-import 'package:drift/drift.dart' show Value;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
@@ -7,7 +6,7 @@ import '../../data/database.dart';
 import '../../shared/currency.dart';
 import '../../shared/providers.dart';
 import '../../shared/widgets.dart';
-import '../../sync/sync_service.dart';
+import '../quick_add/transaction_sheet.dart';
 
 class TransactionsScreen extends ConsumerStatefulWidget {
   const TransactionsScreen({super.key});
@@ -50,233 +49,254 @@ class _TransactionsScreenState extends ConsumerState<TransactionsScreen> {
     final categoryById = {for (final c in categories) c.id: c};
     final range = _effectiveRange();
 
-    return Column(
-      children: [
-        Padding(
-          padding: const EdgeInsets.fromLTRB(12, 4, 12, 0),
-          child: SegmentedButton<String?>(
-            segments: const [
-              ButtonSegment(value: null, label: Text('All')),
-              ButtonSegment(value: TxKind.income, label: Text('Income')),
-              ButtonSegment(value: TxKind.expense, label: Text('Expense')),
-              ButtonSegment(value: TxKind.transfer, label: Text('Transfer')),
-            ],
-            selected: {_kind},
-            showSelectedIcon: false,
-            onSelectionChanged: (s) => setState(() => _kind = s.first),
-          ),
+    return Scaffold(
+      floatingActionButton: FloatingActionButton(
+        tooltip: 'Add transaction',
+        onPressed: () => showTransactionSheet(
+          context,
+          ref,
+          initialAccountId: _accountId,
+          initialKind: _kind,
         ),
-        Padding(
-          padding: const EdgeInsets.fromLTRB(12, 4, 12, 4),
-          child: Row(
-            children: [
-              Expanded(
-                child: SingleChildScrollView(
-                  scrollDirection: Axis.horizontal,
-                  child: Row(
-                    children: [
-                      FilterChip(
-                        label: Text(_dateLabel(range)),
-                        selected: _datePreset != _DatePreset.allHistory,
-                        onSelected: (_) => _pickDatePreset(context),
-                      ),
-                      const SizedBox(width: 6),
-                      FilterChip(
-                        label: Text(
-                          _accountId == null
-                              ? 'All accounts'
-                              : accountById[_accountId]?.name ?? '?',
-                        ),
-                        selected: _accountId != null,
-                        onSelected: (_) async {
-                          final id = await _pickFromList(context, 'Account', [
-                            for (final a in accounts) (a.id, a.name),
-                          ]);
-                          if (id != null) {
-                            setState(() => _accountId = id == '' ? null : id);
-                          }
-                        },
-                      ),
-                      const SizedBox(width: 6),
-                      FilterChip(
-                        label: Text(
-                          _categoryId == null
-                              ? 'All categories'
-                              : categoryById[_categoryId]?.name ?? '?',
-                        ),
-                        selected: _categoryId != null,
-                        onSelected: (_) async {
-                          final id = await _pickFromList(context, 'Category', [
-                            for (final c in categories.where(
-                              (c) => !c.archived,
-                            ))
-                              (c.id, c.name),
-                          ]);
-                          if (id != null) {
-                            setState(() => _categoryId = id == '' ? null : id);
-                          }
-                        },
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-              if (_hasFilters)
-                IconButton(
-                  tooltip: 'Clear filters',
-                  icon: const Icon(Icons.filter_alt_off_outlined),
-                  onPressed: () => setState(() {
-                    _accountId = null;
-                    _categoryId = null;
-                    _kind = null;
-                    _datePreset = _DatePreset.recentMonths;
-                    _customRange = null;
-                    _recentMonths = _historyPageMonths;
-                  }),
-                ),
-            ],
-          ),
-        ),
-        Expanded(
-          child: StreamBuilder<List<Transaction>>(
-            stream: db.watchTransactions(
-              ledgerId: ledgerId,
-              from: range == null
-                  ? null
-                  : DateTime.utc(
-                      range.start.year,
-                      range.start.month,
-                      range.start.day,
-                    ),
-              to: range == null
-                  ? null
-                  : DateTime.utc(
-                      range.end.year,
-                      range.end.month,
-                      range.end.day,
-                    ),
-              accountId: _accountId,
-              categoryId: _categoryId,
-              kind: _kind,
-              limit: null,
+        child: const Icon(Icons.add),
+      ),
+      body: Column(
+        children: [
+          Padding(
+            padding: const EdgeInsets.fromLTRB(12, 4, 12, 0),
+            child: SegmentedButton<String?>(
+              segments: const [
+                ButtonSegment(value: null, label: Text('All')),
+                ButtonSegment(value: TxKind.income, label: Text('Income')),
+                ButtonSegment(value: TxKind.expense, label: Text('Expense')),
+                ButtonSegment(value: TxKind.transfer, label: Text('Transfer')),
+              ],
+              selected: {_kind},
+              showSelectedIcon: false,
+              onSelectionChanged: (s) => setState(() => _kind = s.first),
             ),
-            builder: (context, snapshot) {
-              final txs = snapshot.data ?? [];
-              if (txs.isEmpty) {
-                return Center(
-                  child: Padding(
-                    padding: const EdgeInsets.all(24),
-                    child: Column(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      mainAxisSize: MainAxisSize.min,
+          ),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(12, 4, 12, 4),
+            child: Row(
+              children: [
+                Expanded(
+                  child: SingleChildScrollView(
+                    scrollDirection: Axis.horizontal,
+                    child: Row(
                       children: [
-                        Icon(
-                          Icons.receipt_long_outlined,
-                          size: 48,
-                          color: theme.colorScheme.outline,
+                        FilterChip(
+                          label: Text(_dateLabel(range)),
+                          selected: _datePreset != _DatePreset.allHistory,
+                          onSelected: (_) => _pickDatePreset(context),
                         ),
-                        const SizedBox(height: 8),
-                        Text(
-                          'No transactions',
-                          style: theme.textTheme.bodyLarge?.copyWith(
-                            color: theme.colorScheme.onSurfaceVariant,
+                        const SizedBox(width: 6),
+                        FilterChip(
+                          label: Text(
+                            _accountId == null
+                                ? 'All accounts'
+                                : accountById[_accountId]?.name ?? '?',
                           ),
+                          selected: _accountId != null,
+                          onSelected: (_) async {
+                            final id = await _pickFromList(context, 'Account', [
+                              for (final a in accounts) (a.id, a.name),
+                            ]);
+                            if (id != null) {
+                              setState(() => _accountId = id == '' ? null : id);
+                            }
+                          },
                         ),
-                        if (_canLoadOlder) ...[
-                          const SizedBox(height: 16),
-                          OutlinedButton.icon(
-                            onPressed: _loadOlder,
-                            icon: const Icon(Icons.history),
-                            label: const Text('Load older'),
+                        const SizedBox(width: 6),
+                        FilterChip(
+                          label: Text(
+                            _categoryId == null
+                                ? 'All categories'
+                                : categoryById[_categoryId]?.name ?? '?',
                           ),
-                        ],
+                          selected: _categoryId != null,
+                          onSelected: (_) async {
+                            final id =
+                                await _pickFromList(context, 'Category', [
+                                  for (final c in categories.where(
+                                    (c) => !c.archived,
+                                  ))
+                                    (c.id, c.name),
+                                ]);
+                            if (id != null) {
+                              setState(
+                                () => _categoryId = id == '' ? null : id,
+                              );
+                            }
+                          },
+                        ),
                       ],
                     ),
                   ),
-                );
-              }
-              // Group by day.
-              final groups = <DateTime, List<Transaction>>{};
-              for (final t in txs) {
-                final day = DateTime.utc(t.date.year, t.date.month, t.date.day);
-                groups.putIfAbsent(day, () => []).add(t);
-              }
-              final days = groups.keys.toList()..sort((a, b) => b.compareTo(a));
-              return ListView.builder(
-                padding: const EdgeInsets.only(bottom: 16),
-                itemCount: days.length + (_canLoadOlder ? 1 : 0),
-                itemBuilder: (context, i) {
-                  if (i == days.length) {
-                    return Padding(
-                      padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
-                      child: OutlinedButton.icon(
-                        onPressed: _loadOlder,
-                        icon: const Icon(Icons.history),
-                        label: const Text('Load older'),
+                ),
+                if (_hasFilters)
+                  IconButton(
+                    tooltip: 'Clear filters',
+                    icon: const Icon(Icons.filter_alt_off_outlined),
+                    onPressed: () => setState(() {
+                      _accountId = null;
+                      _categoryId = null;
+                      _kind = null;
+                      _datePreset = _DatePreset.recentMonths;
+                      _customRange = null;
+                      _recentMonths = _historyPageMonths;
+                    }),
+                  ),
+              ],
+            ),
+          ),
+          Expanded(
+            child: StreamBuilder<List<Transaction>>(
+              stream: db.watchTransactions(
+                ledgerId: ledgerId,
+                from: range == null
+                    ? null
+                    : DateTime.utc(
+                        range.start.year,
+                        range.start.month,
+                        range.start.day,
                       ),
-                    );
-                  }
-                  final day = days[i];
-                  final dayTxs = groups[day]!;
-                  double spentUgx = 0;
-                  for (final t in dayTxs.where(
-                    (t) => t.kind == TxKind.expense,
-                  )) {
-                    final c = CurrencyX.fromCode(
-                      accountById[t.accountId]?.currency ?? 'UGX',
-                    );
-                    spentUgx +=
-                        convertWithRate(
-                          t.amount,
-                          c,
-                          Currency.ugx,
-                          latestRate,
-                        ) ??
-                        t.amount;
-                  }
-                  return Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Padding(
-                        padding: const EdgeInsets.fromLTRB(16, 14, 16, 2),
-                        child: Row(
-                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                          children: [
-                            Text(
-                              _dayLabel(day),
-                              style: theme.textTheme.titleSmall?.copyWith(
-                                color: theme.colorScheme.primary,
-                              ),
+                to: range == null
+                    ? null
+                    : DateTime.utc(
+                        range.end.year,
+                        range.end.month,
+                        range.end.day,
+                      ),
+                accountId: _accountId,
+                categoryId: _categoryId,
+                kind: _kind,
+                limit: null,
+              ),
+              builder: (context, snapshot) {
+                final txs = snapshot.data ?? [];
+                if (txs.isEmpty) {
+                  return Center(
+                    child: Padding(
+                      padding: const EdgeInsets.all(24),
+                      child: Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(
+                            Icons.receipt_long_outlined,
+                            size: 48,
+                            color: theme.colorScheme.outline,
+                          ),
+                          const SizedBox(height: 8),
+                          Text(
+                            'No transactions',
+                            style: theme.textTheme.bodyLarge?.copyWith(
+                              color: theme.colorScheme.onSurfaceVariant,
                             ),
-                            if (spentUgx > 0)
+                          ),
+                          if (_canLoadOlder) ...[
+                            const SizedBox(height: 16),
+                            OutlinedButton.icon(
+                              onPressed: _loadOlder,
+                              icon: const Icon(Icons.history),
+                              label: const Text('Load older'),
+                            ),
+                          ],
+                        ],
+                      ),
+                    ),
+                  );
+                }
+                // Group by day.
+                final groups = <DateTime, List<Transaction>>{};
+                for (final t in txs) {
+                  final day = DateTime.utc(
+                    t.date.year,
+                    t.date.month,
+                    t.date.day,
+                  );
+                  groups.putIfAbsent(day, () => []).add(t);
+                }
+                final days = groups.keys.toList()
+                  ..sort((a, b) => b.compareTo(a));
+                return ListView.builder(
+                  // Clears the add-transaction FAB.
+                  padding: const EdgeInsets.only(bottom: 88),
+                  itemCount: days.length + (_canLoadOlder ? 1 : 0),
+                  itemBuilder: (context, i) {
+                    if (i == days.length) {
+                      return Padding(
+                        padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
+                        child: OutlinedButton.icon(
+                          onPressed: _loadOlder,
+                          icon: const Icon(Icons.history),
+                          label: const Text('Load older'),
+                        ),
+                      );
+                    }
+                    final day = days[i];
+                    final dayTxs = groups[day]!;
+                    double spentUgx = 0;
+                    for (final t in dayTxs.where(
+                      (t) => t.kind == TxKind.expense,
+                    )) {
+                      final c = CurrencyX.fromCode(
+                        accountById[t.accountId]?.currency ?? 'UGX',
+                      );
+                      spentUgx +=
+                          convertWithRate(
+                            t.amount,
+                            c,
+                            Currency.ugx,
+                            latestRate,
+                          ) ??
+                          t.amount;
+                    }
+                    return Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Padding(
+                          padding: const EdgeInsets.fromLTRB(16, 14, 16, 2),
+                          child: Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                            children: [
                               Text(
-                                formatMoney(spentUgx, Currency.ugx),
-                                style: theme.textTheme.labelLarge?.copyWith(
-                                  color: theme.colorScheme.onSurfaceVariant,
+                                _dayLabel(day),
+                                style: theme.textTheme.titleSmall?.copyWith(
+                                  color: theme.colorScheme.primary,
                                 ),
                               ),
-                          ],
+                              if (spentUgx > 0)
+                                Text(
+                                  formatMoney(spentUgx, Currency.ugx),
+                                  style: theme.textTheme.labelLarge?.copyWith(
+                                    color: theme.colorScheme.onSurfaceVariant,
+                                  ),
+                                ),
+                            ],
+                          ),
                         ),
-                      ),
-                      for (final t in dayTxs)
-                        _TransactionTile(
-                          tx: t,
-                          account: accountById[t.accountId],
-                          toAccount: t.toAccountId == null
-                              ? null
-                              : accountById[t.toAccountId],
-                          category: t.categoryId == null
-                              ? null
-                              : categoryById[t.categoryId],
-                        ),
-                    ],
-                  );
-                },
-              );
-            },
+                        for (final t in dayTxs)
+                          _TransactionTile(
+                            tx: t,
+                            account: accountById[t.accountId],
+                            toAccount: t.toAccountId == null
+                                ? null
+                                : accountById[t.toAccountId],
+                            category: t.categoryId == null
+                                ? null
+                                : categoryById[t.categoryId],
+                          ),
+                      ],
+                    );
+                  },
+                );
+              },
+            ),
           ),
-        ),
-      ],
+        ],
+      ),
     );
   }
 
@@ -553,268 +573,8 @@ class _TransactionTile extends ConsumerWidget {
             ),
           ],
         ),
-        onTap: () => showEditTransactionSheet(context, ref, tx),
+        onTap: () => showTransactionSheet(context, ref, tx: tx),
       ),
     );
   }
-}
-
-Future<bool> confirmDeleteTransaction(
-  BuildContext context,
-  String title,
-  String amount,
-) async {
-  return await showDialog<bool>(
-        context: context,
-        builder: (context) => AlertDialog(
-          title: const Text('Delete entry?'),
-          content: Text('$title — $amount'),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(context, false),
-              child: const Text('Cancel'),
-            ),
-            FilledButton(
-              onPressed: () => Navigator.pop(context, true),
-              child: const Text('Delete'),
-            ),
-          ],
-        ),
-      ) ??
-      false;
-}
-
-Future<void> deleteTransactionWithSync(WidgetRef ref, String id) async {
-  await ref.read(databaseProvider).softDeleteTransaction(id);
-  ref.read(syncServiceProvider).syncSilently();
-}
-
-/// Bottom sheet to edit an existing transaction's fields.
-Future<void> showEditTransactionSheet(
-  BuildContext context,
-  WidgetRef ref,
-  Transaction tx,
-) async {
-  final db = ref.read(databaseProvider);
-  final accounts = await db.getAccounts(
-    ledgerId: tx.ledgerId,
-    includeArchived: true,
-  );
-  final categories = await db.getCategories(
-    ledgerId: tx.ledgerId,
-    kind: tx.kind == TxKind.income ? CategoryKind.income : CategoryKind.expense,
-  );
-  if (!context.mounted) return;
-
-  final amountController = TextEditingController(
-    text: trimmedAmount(tx.amount),
-  );
-  final toAmountController = TextEditingController(
-    text: tx.toAmount == null ? '' : trimmedAmount(tx.toAmount!),
-  );
-  final noteController = TextEditingController(text: tx.note ?? '');
-  var date = tx.date;
-  var categoryId = tx.categoryId;
-  var accountId = tx.accountId;
-  var toAccountId = tx.toAccountId;
-  var excludeFromReport = tx.excludeFromReport;
-
-  await showModalBottomSheet<void>(
-    context: context,
-    isScrollControlled: true,
-    builder: (context) => StatefulBuilder(
-      builder: (context, setSheetState) => Padding(
-        padding: EdgeInsets.only(
-          left: 16,
-          right: 16,
-          top: 16,
-          bottom: MediaQuery.of(context).viewInsets.bottom + 16,
-        ),
-        child: ListView(
-          shrinkWrap: true,
-          children: [
-            Text(
-              'Edit ${tx.kind}',
-              style: Theme.of(context).textTheme.titleLarge,
-            ),
-            const SizedBox(height: 12),
-            Row(
-              children: [
-                Expanded(
-                  child: TextField(
-                    controller: amountController,
-                    keyboardType: const TextInputType.numberWithOptions(
-                      decimal: true,
-                    ),
-                    decoration: const InputDecoration(labelText: 'Amount'),
-                  ),
-                ),
-                const SizedBox(width: 8),
-                OutlinedButton(
-                  onPressed: () async {
-                    final picked = await showDatePicker(
-                      context: context,
-                      initialDate: date,
-                      firstDate: DateTime(2000),
-                      lastDate: DateTime.now().add(const Duration(days: 1)),
-                    );
-                    if (picked != null) {
-                      setSheetState(
-                        () => date = DateTime.utc(
-                          picked.year,
-                          picked.month,
-                          picked.day,
-                        ),
-                      );
-                    }
-                  },
-                  child: Text(DateFormat('d MMM yyyy').format(date)),
-                ),
-              ],
-            ),
-            const SizedBox(height: 12),
-            DropdownButtonFormField<String>(
-              initialValue: accountId,
-              decoration: InputDecoration(
-                labelText: tx.kind == TxKind.transfer
-                    ? 'From account'
-                    : 'Account',
-              ),
-              items: [
-                for (final a in accounts)
-                  DropdownMenuItem(value: a.id, child: Text(a.name)),
-              ],
-              onChanged: (v) => setSheetState(() => accountId = v ?? accountId),
-            ),
-            if (tx.kind == TxKind.transfer) ...[
-              const SizedBox(height: 12),
-              DropdownButtonFormField<String>(
-                initialValue: toAccountId,
-                decoration: const InputDecoration(labelText: 'To account'),
-                items: [
-                  for (final a in accounts)
-                    DropdownMenuItem(value: a.id, child: Text(a.name)),
-                ],
-                onChanged: (v) => setSheetState(() => toAccountId = v),
-              ),
-              const SizedBox(height: 12),
-              TextField(
-                controller: toAmountController,
-                keyboardType: const TextInputType.numberWithOptions(
-                  decimal: true,
-                ),
-                decoration: const InputDecoration(labelText: 'Amount received'),
-              ),
-            ] else ...[
-              const SizedBox(height: 12),
-              DropdownButtonFormField<String>(
-                initialValue: categories.any((c) => c.id == categoryId)
-                    ? categoryId
-                    : null,
-                decoration: const InputDecoration(labelText: 'Category'),
-                items: [
-                  for (final c in categories)
-                    DropdownMenuItem(value: c.id, child: Text(c.name)),
-                ],
-                onChanged: (v) => setSheetState(() => categoryId = v),
-              ),
-            ],
-            if (tx.kind != TxKind.transfer)
-              CheckboxListTile(
-                value: excludeFromReport,
-                onChanged: (v) =>
-                    setSheetState(() => excludeFromReport = v ?? false),
-                title: Text(
-                  tx.kind == TxKind.income
-                      ? 'Exclude from income'
-                      : 'Exclude from expenses',
-                ),
-                controlAffinity: ListTileControlAffinity.leading,
-                contentPadding: EdgeInsets.zero,
-                dense: true,
-              ),
-            const SizedBox(height: 12),
-            TextField(
-              controller: noteController,
-              decoration: const InputDecoration(labelText: 'Note'),
-            ),
-            const SizedBox(height: 16),
-            OutlinedButton.icon(
-              onPressed: () async {
-                final currency = CurrencyX.fromCode(
-                  accounts
-                          .where((a) => a.id == accountId)
-                          .firstOrNull
-                          ?.currency ??
-                      'UGX',
-                );
-                final confirmed = await confirmDeleteTransaction(
-                  context,
-                  tx.kind == TxKind.transfer ? 'Transfer' : 'Entry',
-                  formatMoney(tx.amount, currency),
-                );
-                if (!confirmed) return;
-                await deleteTransactionWithSync(ref, tx.id);
-                if (context.mounted) Navigator.pop(context);
-              },
-              icon: const Icon(Icons.delete_outline),
-              style: OutlinedButton.styleFrom(
-                foregroundColor: Theme.of(context).colorScheme.error,
-                minimumSize: const Size.fromHeight(48),
-              ),
-              label: const Text('Delete entry'),
-            ),
-            const SizedBox(height: 8),
-            FilledButton(
-              onPressed: () async {
-                final amount = double.tryParse(
-                  amountController.text.replaceAll(',', ''),
-                );
-                if (amount == null || amount <= 0) return;
-                await db.upsertTransaction(
-                  TransactionsCompanion.insert(
-                    id: tx.id,
-                    ledgerId: Value(tx.ledgerId),
-                    date: date,
-                    kind: tx.kind,
-                    amount: amount,
-                    accountId: accountId,
-                    categoryId: Value(
-                      tx.kind == TxKind.transfer ? null : categoryId,
-                    ),
-                    toAccountId: Value(
-                      tx.kind == TxKind.transfer ? toAccountId : null,
-                    ),
-                    toAmount: Value(
-                      tx.kind == TxKind.transfer
-                          ? double.tryParse(
-                                  toAmountController.text.replaceAll(',', ''),
-                                ) ??
-                                amount
-                          : null,
-                    ),
-                    note: Value(
-                      noteController.text.trim().isEmpty
-                          ? null
-                          : noteController.text.trim(),
-                    ),
-                    excludeFromReport: Value(
-                      tx.kind == TxKind.transfer ? false : excludeFromReport,
-                    ),
-                    createdAt: tx.createdAt,
-                    updatedAt: DateTime.now().toUtc(),
-                  ),
-                );
-                if (context.mounted) Navigator.pop(context);
-              },
-              style: FilledButton.styleFrom(
-                minimumSize: const Size.fromHeight(52),
-              ),
-              child: const Text('Save changes'),
-            ),
-          ],
-        ),
-      ),
-    ),
-  );
 }
