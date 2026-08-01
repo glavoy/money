@@ -944,10 +944,12 @@ class _GridTile extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    // Tinted, so the things you pick read differently from the neutral grey
+    // keypad keys below them.
     return Material(
       color: selected
-          ? theme.colorScheme.secondaryContainer
-          : theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.6),
+          ? theme.colorScheme.primaryContainer
+          : theme.colorScheme.primaryContainer.withValues(alpha: 0.42),
       borderRadius: BorderRadius.circular(10),
       child: InkWell(
         borderRadius: BorderRadius.circular(10),
@@ -970,7 +972,7 @@ class _GridTile extends StatelessWidget {
                   style: theme.textTheme.bodySmall?.copyWith(
                     fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
                     color: selected
-                        ? theme.colorScheme.onSecondaryContainer
+                        ? theme.colorScheme.onPrimaryContainer
                         : theme.colorScheme.onSurface,
                   ),
                 ),
