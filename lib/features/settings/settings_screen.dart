@@ -137,33 +137,59 @@ class _ThemeModeTile extends ConsumerWidget {
           'Theme',
           style: TextStyle(fontWeight: FontWeight.w500),
         ),
-        subtitle: Padding(
-          padding: const EdgeInsets.only(top: 8),
-          child: SegmentedButton<ThemeMode>(
-            segments: const [
-              ButtonSegment(
+        // A trailing dropdown rather than a segmented button: three
+        // icon+label segments do not fit a phone's subtitle width and wrap
+        // mid-word ("Sys te m").
+        trailing: DropdownButtonHideUnderline(
+          child: DropdownButton<ThemeMode>(
+            value: mode,
+            borderRadius: BorderRadius.circular(12),
+            items: const [
+              DropdownMenuItem(
                 value: ThemeMode.system,
-                icon: Icon(Icons.brightness_auto_outlined),
-                label: Text('System'),
+                child: _ThemeOption(
+                  icon: Icons.brightness_auto_outlined,
+                  label: 'System',
+                ),
               ),
-              ButtonSegment(
+              DropdownMenuItem(
                 value: ThemeMode.light,
-                icon: Icon(Icons.light_mode_outlined),
-                label: Text('Light'),
+                child: _ThemeOption(
+                  icon: Icons.light_mode_outlined,
+                  label: 'Light',
+                ),
               ),
-              ButtonSegment(
+              DropdownMenuItem(
                 value: ThemeMode.dark,
-                icon: Icon(Icons.dark_mode_outlined),
-                label: Text('Dark'),
+                child: _ThemeOption(
+                  icon: Icons.dark_mode_outlined,
+                  label: 'Dark',
+                ),
               ),
             ],
-            selected: {mode},
-            onSelectionChanged: (selected) {
-              ref.read(themeModeProvider.notifier).set(selected.single);
+            onChanged: (selected) {
+              if (selected != null) {
+                ref.read(themeModeProvider.notifier).set(selected);
+              }
             },
           ),
         ),
       ),
+    );
+  }
+}
+
+class _ThemeOption extends StatelessWidget {
+  const _ThemeOption({required this.icon, required this.label});
+
+  final IconData icon;
+  final String label;
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [Icon(icon, size: 18), const SizedBox(width: 8), Text(label)],
     );
   }
 }

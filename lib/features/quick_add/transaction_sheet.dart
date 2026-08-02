@@ -21,7 +21,7 @@ enum _Field { amount, toAmount }
 const _kAmountBlockHeight = 84.0;
 const _kKindSelectorHeight = 48.0;
 const _kControlsRowHeight = 48.0;
-const _kKeypadHeight = 232.0;
+const _kKeypadHeight = 216.0;
 
 /// Stands in for the keypad when the system keyboard has replaced it, so
 /// Save is reachable in every state.
@@ -521,7 +521,9 @@ class _TransactionSheetState extends ConsumerState<_TransactionSheet> {
         _filter.isNotEmpty &&
         (_isTransfer ? visibleAccounts : visibleCategories).isEmpty;
 
-    final bottomPad = media.padding.bottom > 0 ? 8.0 : 12.0;
+    // showModalBottomSheet does not inset for system UI, so without adding
+    // padding.bottom the last keypad row sits under the Android nav bar.
+    final bottomPad = media.padding.bottom + 12.0;
     final noteAllowance = _showNote ? _kNoteAllowance : 0.0;
 
     // Height depends only on the window and the system keyboard — never on
@@ -944,12 +946,13 @@ class _GridTile extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    // Tinted, so the things you pick read differently from the neutral grey
-    // keypad keys below them.
+    // Tinted AND lighter than the recessive grey keypad keys below. Hue
+    // alone was not enough: at matching luminance the two blend together on
+    // a phone in dark mode.
     return Material(
       color: selected
-          ? theme.colorScheme.primaryContainer
-          : theme.colorScheme.primaryContainer.withValues(alpha: 0.42),
+          ? theme.colorScheme.primary
+          : theme.colorScheme.primaryContainer,
       borderRadius: BorderRadius.circular(10),
       child: InkWell(
         borderRadius: BorderRadius.circular(10),
@@ -972,8 +975,8 @@ class _GridTile extends StatelessWidget {
                   style: theme.textTheme.bodySmall?.copyWith(
                     fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
                     color: selected
-                        ? theme.colorScheme.onPrimaryContainer
-                        : theme.colorScheme.onSurface,
+                        ? theme.colorScheme.onPrimary
+                        : theme.colorScheme.onPrimaryContainer,
                   ),
                 ),
               ),
@@ -1008,8 +1011,10 @@ class _Keypad extends StatelessWidget {
         child: Padding(
           padding: const EdgeInsets.all(3),
           child: Material(
+            // Deliberately recessive: the keypad is a utility, the tinted
+            // category tiles above are the thing being chosen.
             color: theme.colorScheme.surfaceContainerHighest.withValues(
-              alpha: enabled ? 0.7 : 0.25,
+              alpha: enabled ? 0.45 : 0.18,
             ),
             borderRadius: BorderRadius.circular(10),
             child: InkWell(

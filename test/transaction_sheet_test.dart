@@ -233,6 +233,22 @@ void main() {
     await tearDownTree(tester);
   });
 
+  testWidgets('the keypad clears the system navigation bar', (tester) async {
+    // 1080x2412 @2.75 with a ~48px Android nav bar — showModalBottomSheet
+    // does not inset for system UI, so the bottom row used to sit under it.
+    tester.view.padding = const FakeViewPadding(bottom: 48 * 2.75);
+    await pumpApp(tester, physicalSize: const Size(1080, 2412));
+    tester.view.devicePixelRatio = 2.75;
+    await tester.pumpAndSettle();
+    await openAddSheet(tester);
+
+    final navBarTop = (2412 / 2.75) - 48;
+    final bottomRow = tester.getRect(find.byKey(const ValueKey('key-000')));
+    expect(bottomRow.bottom, lessThanOrEqualTo(navBarTop));
+
+    await tearDownTree(tester);
+  });
+
   testWidgets('typing on a physical keyboard drives the amount and saves', (
     tester,
   ) async {
