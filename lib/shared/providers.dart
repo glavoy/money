@@ -62,6 +62,14 @@ final allAccountsProvider = StreamProvider<List<Account>>((ref) {
       .watchAccounts(ledgerId: ledgerId, includeArchived: true);
 });
 
+/// Every ledger's accounts, archived included. Needed where a transaction can
+/// reference an account outside the selected ledger — transfers may cross
+/// ledgers, so both the destination picker and account resolution for display
+/// have to look wider than [allAccountsProvider].
+final everyLedgerAccountsProvider = StreamProvider<List<Account>>((ref) {
+  return ref.watch(databaseProvider).watchAccounts(includeArchived: true);
+});
+
 final balancesProvider = StreamProvider<List<AccountBalance>>((ref) {
   final ledgerId = ref.watch(selectedLedgerProvider);
   return ref.watch(databaseProvider).watchBalances(ledgerId: ledgerId);

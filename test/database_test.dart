@@ -144,6 +144,90 @@ void main() {
       expect(rentalCategories.single.name, 'Maintenance');
     });
 
+    test('a transfer across ledgers moves both balances and is visible '
+        'from both sides', () async {
+      final db = _openTestDb();
+      addTearDown(db.close);
+      final now = DateTime.now().toUtc();
+      const investLedger = 'ledger-invest';
+
+      await db
+          .into(db.ledgers)
+          .insert(
+            LedgersCompanion.insert(
+              id: investLedger,
+              name: 'Investments',
+              createdAt: now,
+              updatedAt: now,
+            ),
+          );
+      await db
+          .into(db.accounts)
+          .insert(
+            AccountsCompanion.insert(
+              id: 'acc-savings',
+              ledgerId: const Value(investLedger),
+              name: 'Savings',
+              type: AccountType.bank,
+              currency: 'UGX',
+              createdAt: now,
+              updatedAt: now,
+            ),
+          );
+
+      // Recorded in Personal (the source account's ledger), landing on an
+      // account that lives in Investments.
+      await db.upsertTransaction(
+        TransactionsCompanion.insert(
+          id: 'tx-cross',
+          ledgerId: const Value(personalLedgerId),
+          date: DateTime.utc(2026, 8, 1),
+          kind: TxKind.transfer,
+          amount: 500000,
+          accountId: 'acc-cash',
+          toAccountId: const Value('acc-savings'),
+          toAmount: const Value(500000),
+          createdAt: now,
+          updatedAt: now,
+        ),
+      );
+
+      // Both balances move, even though the row names only one ledger.
+      final personalBalances = await db
+          .watchBalances(ledgerId: personalLedgerId)
+          .first;
+      final investBalances = await db
+          .watchBalances(ledgerId: investLedger)
+          .first;
+      expect(
+        personalBalances.singleWhere((b) => b.account.id == 'acc-cash').balance,
+        -500000,
+      );
+      expect(
+        investBalances
+            .singleWhere((b) => b.account.id == 'acc-savings')
+            .balance,
+        500000,
+      );
+
+      // Visible from the destination ledger's History, not just the source's.
+      final fromSource = await db
+          .watchTransactions(ledgerId: personalLedgerId)
+          .first;
+      final fromDestination = await db
+          .watchTransactions(ledgerId: investLedger)
+          .first;
+      expect(fromSource.map((t) => t.id), contains('tx-cross'));
+      expect(fromDestination.map((t) => t.id), contains('tx-cross'));
+
+      // ...and the destination account's own ledger view sees it, which is
+      // what keeps its running balance agreeing with the Accounts tab.
+      final byAccount = await db
+          .watchTransactions(accountId: 'acc-savings')
+          .first;
+      expect(byAccount.map((t) => t.id), contains('tx-cross'));
+    });
+
     test('sync mappers move empty ledger setup between databases', () async {
       final windowsDb = _openTestDb();
       final now = DateTime.now().toUtc();

@@ -41,16 +41,28 @@ class LedgersScreen extends ConsumerWidget {
                         : null,
                   ),
                   subtitle: ledger.archived ? const Text('Archived') : null,
-                  trailing: IconButton(
-                    icon: Icon(
-                      ledger.archived
-                          ? Icons.unarchive_outlined
-                          : Icons.archive_outlined,
-                    ),
-                    tooltip: ledger.archived ? 'Unarchive' : 'Archive',
-                    onPressed: selectedId == ledger.id && !ledger.archived
-                        ? null
-                        : () => _setArchived(ref, ledger, !ledger.archived),
+                  trailing: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      // Renaming used to be long-press only, which is not
+                      // discoverable on a phone.
+                      IconButton(
+                        icon: const Icon(Icons.edit_outlined),
+                        tooltip: 'Rename ledger',
+                        onPressed: () => _editLedger(context, ref, ledger),
+                      ),
+                      IconButton(
+                        icon: Icon(
+                          ledger.archived
+                              ? Icons.unarchive_outlined
+                              : Icons.archive_outlined,
+                        ),
+                        tooltip: ledger.archived ? 'Unarchive' : 'Archive',
+                        onPressed: selectedId == ledger.id && !ledger.archived
+                            ? null
+                            : () => _setArchived(ref, ledger, !ledger.archived),
+                      ),
+                    ],
                   ),
                   onTap: ledger.archived
                       ? () => _editLedger(context, ref, ledger)

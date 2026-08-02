@@ -424,12 +424,19 @@ class _TransactionSheetState extends ConsumerState<_TransactionSheet> {
     final note = _noteController.text.trim();
     final now = DateTime.now().toUtc();
     final tx = widget.tx;
+    // The row belongs to the source account's ledger. For a transfer into
+    // another ledger, the destination side becomes visible there via its
+    // toAccountId — see watchTransactions.
+    final String sourceLedgerId =
+        accounts.where((a) => a.id == _accountId).firstOrNull?.ledgerId ??
+        tx?.ledgerId ??
+        ref.read(selectedLedgerProvider);
     await ref
         .read(databaseProvider)
         .upsertTransaction(
           TransactionsCompanion.insert(
             id: tx?.id ?? uuid.v4(),
-            ledgerId: Value(tx?.ledgerId ?? ref.read(selectedLedgerProvider)),
+            ledgerId: Value(sourceLedgerId),
             date: _dateOnly,
             kind: _kind,
             amount: amount,
@@ -463,8 +470,13 @@ class _TransactionSheetState extends ConsumerState<_TransactionSheet> {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final media = MediaQuery.of(context);
+    final ledgerId = ref.watch(selectedLedgerProvider);
+    // Transfers may cross ledgers, so accounts are resolved for display from
+    // every ledger; `pickable` stays the current ledger, for the source.
+    final allAccounts = ref.watch(everyLedgerAccountsProvider).value ?? [];
     final pickable = ref.watch(accountsProvider).value ?? [];
-    final allAccounts = ref.watch(allAccountsProvider).value ?? [];
+    final ledgers = ref.watch(ledgersProvider).value ?? const <Ledger>[];
+    final ledgerNames = <String, String>{for (final l in ledgers) l.id: l.name};
     final categories =
         ref
             .watch(
@@ -476,8 +488,11 @@ class _TransactionSheetState extends ConsumerState<_TransactionSheet> {
         [];
 
     // Seed the account the way Quick Add used to: last used, else the first.
+    // Only once accounts have actually loaded — the providers are empty for
+    // the first frame or two, and re-seeding then would discard the account
+    // the sheet was opened with (e.g. from an account's own ledger).
     final lastAccountId = ref.watch(lastAccountProvider);
-    if (!allAccounts.any((a) => a.id == _accountId)) {
+    if (allAccounts.isNotEmpty && !allAccounts.any((a) => a.id == _accountId)) {
       _accountId = pickable.any((a) => a.id == lastAccountId)
           ? lastAccountId
           : (pickable.isNotEmpty ? pickable.first.id : null);
@@ -510,13 +525,28 @@ class _TransactionSheetState extends ConsumerState<_TransactionSheet> {
     final visibleCategories = _filter.isEmpty
         ? ranked
         : ranked.where((c) => c.name.toLowerCase().contains(_filter)).toList();
-    final visibleAccounts = pickable
+    // Destinations span every ledger: this one first, then the rest. The
+    // filter also matches ledger names so "inv" finds Investments accounts.
+    bool matchesFilter(Account a) =>
+        _filter.isEmpty ||
+        a.name.toLowerCase().contains(_filter) ||
+        (ledgerNames[a.ledgerId] ?? '').toLowerCase().contains(_filter);
+    final sameLedgerDestinations = allAccounts
         .where(
           (a) =>
+              a.ledgerId == ledgerId &&
               a.id != _accountId &&
-              (_filter.isEmpty || a.name.toLowerCase().contains(_filter)),
+              !a.archived &&
+              matchesFilter(a),
         )
         .toList();
+    final otherLedgerDestinations = allAccounts
+        .where((a) => a.ledgerId != ledgerId && !a.archived && matchesFilter(a))
+        .toList();
+    final visibleAccounts = [
+      ...sameLedgerDestinations,
+      ...otherLedgerDestinations,
+    ];
     final noMatch =
         _filter.isNotEmpty &&
         (_isTransfer ? visibleAccounts : visibleCategories).isEmpty;
@@ -586,7 +616,20 @@ class _TransactionSheetState extends ConsumerState<_TransactionSheet> {
               ),
               SizedBox(
                 height: _kControlsRowHeight,
-                child: _metaRow(theme, account, pickable, currency, noMatch),
+                child: _metaRow(
+                  theme,
+                  account,
+                  // The source stays within this ledger, plus the
+                  // transaction's own source when editing one recorded
+                  // elsewhere, so it does not silently vanish.
+                  [
+                    ...pickable,
+                    if (account != null && account.ledgerId != ledgerId)
+                      account,
+                  ],
+                  currency,
+                  noMatch,
+                ),
               ),
               // Everything variable lives here, so nothing above it moves.
               Expanded(
@@ -606,7 +649,12 @@ class _TransactionSheetState extends ConsumerState<_TransactionSheet> {
                       ),
                     Expanded(
                       child: _isTransfer
-                          ? _accountGrid(theme, visibleAccounts)
+                          ? _accountGrid(
+                              theme,
+                              sameLedgerDestinations,
+                              otherLedgerDestinations,
+                              ledgerNames,
+                            )
                           : _categoryGrid(theme, visibleCategories),
                     ),
                   ],
@@ -866,28 +914,69 @@ class _TransactionSheetState extends ConsumerState<_TransactionSheet> {
     );
   }
 
-  Widget _accountGrid(ThemeData theme, List<Account> options) {
-    if (options.isEmpty) {
+  Widget _accountGrid(
+    ThemeData theme,
+    List<Account> sameLedger,
+    List<Account> otherLedgers,
+    Map<String, String> ledgerNames,
+  ) {
+    if (sameLedger.isEmpty && otherLedgers.isEmpty) {
       return _emptyGrid(theme, 'No other accounts');
     }
-    return GridView.builder(
-      key: const ValueKey('account-grid'),
-      padding: const EdgeInsets.fromLTRB(12, 4, 12, 8),
-      gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-        crossAxisCount: 3,
-        mainAxisSpacing: 6,
-        crossAxisSpacing: 6,
-        mainAxisExtent: _kAccountTileHeight,
-      ),
-      itemCount: options.length,
-      itemBuilder: (context, i) {
-        final a = options[i];
+    const delegate = SliverGridDelegateWithFixedCrossAxisCount(
+      crossAxisCount: 3,
+      mainAxisSpacing: 6,
+      crossAxisSpacing: 6,
+      mainAxisExtent: _kAccountTileHeight,
+    );
+    SliverChildBuilderDelegate tiles(List<Account> list, bool qualify) {
+      return SliverChildBuilderDelegate((context, i) {
+        final a = list[i];
         return _GridTile(
-          label: 'To ${a.name}',
+          // Qualified with the ledger, since account names repeat across
+          // ledgers (there is a "Cash" in more than one).
+          label: qualify
+              ? '${ledgerNames[a.ledgerId] ?? '?'} · ${a.name}'
+              : 'To ${a.name}',
           selected: a.id == _toAccountId,
           onTap: () => _pickDestination(a),
         );
-      },
+      }, childCount: list.length);
+    }
+
+    return CustomScrollView(
+      key: const ValueKey('account-grid'),
+      slivers: [
+        SliverPadding(
+          padding: const EdgeInsets.fromLTRB(12, 4, 12, 4),
+          sliver: SliverGrid(
+            gridDelegate: delegate,
+            delegate: tiles(sameLedger, false),
+          ),
+        ),
+        if (otherLedgers.isNotEmpty) ...[
+          SliverToBoxAdapter(
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(14, 2, 14, 4),
+              child: Text(
+                'OTHER LEDGERS',
+                style: theme.textTheme.labelSmall?.copyWith(
+                  color: theme.colorScheme.onSurfaceVariant,
+                  letterSpacing: 0.8,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ),
+          ),
+          SliverPadding(
+            padding: const EdgeInsets.fromLTRB(12, 0, 12, 8),
+            sliver: SliverGrid(
+              gridDelegate: delegate,
+              delegate: tiles(otherLedgers, true),
+            ),
+          ),
+        ],
+      ],
     );
   }
 

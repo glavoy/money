@@ -220,11 +220,11 @@ class _AccountLedgerScreenState extends ConsumerState<AccountLedgerScreen> {
         child: const Icon(Icons.add),
       ),
       body: StreamBuilder<List<Transaction>>(
-        stream: db.watchTransactions(
-          ledgerId: account.ledgerId,
-          accountId: account.id,
-          limit: 2000,
-        ),
+        // Scoped by account alone: naming an account already pins the
+        // ledger, and filtering by ledger too would drop transfers arriving
+        // from another one — making this screen's running balance disagree
+        // with the Accounts tab.
+        stream: db.watchTransactions(accountId: account.id, limit: 2000),
         builder: (context, snapshot) {
           final txs = snapshot.data ?? [];
           // Compute running balance from oldest to newest.

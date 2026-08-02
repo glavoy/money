@@ -1,5 +1,7 @@
+import 'package:drift/drift.dart' show Value;
 import 'package:drift/native.dart';
 import 'package:money/data/database.dart';
+import 'package:money/data/seed.dart';
 import 'package:money/main.dart';
 import 'package:money/shared/providers.dart';
 import 'package:flutter/material.dart';
@@ -10,9 +12,13 @@ import 'package:flutter_test/flutter_test.dart';
 Future<AppDatabase> pumpApp(
   WidgetTester tester, {
   Size physicalSize = const Size(1200, 2400),
+  Future<void> Function(AppDatabase db)? seed,
 }) async {
   final db = AppDatabase(NativeDatabase.memory());
   addTearDown(db.close);
+  // Seed before the first pump: drift streams that are already subscribed do
+  // not reliably re-emit under the widget tester's fake clock.
+  await seed?.call(db);
 
   tester.view.physicalSize = physicalSize;
   tester.view.devicePixelRatio = 2.0;
@@ -41,6 +47,22 @@ Future<void> tearDownTree(WidgetTester tester) async {
 /// Opens the entry sheet from the bottom nav's add slot.
 Future<void> openAddSheet(WidgetTester tester) async {
   await tester.tap(find.text('Add'));
+  await tester.pumpAndSettle();
+}
+
+/// Selects Expense/Income/Transfer in the open sheet.
+///
+/// Tapping the SegmentedButton itself would hit the centre of the group (the
+/// Income segment) regardless of which kind was asked for, so target the
+/// segment's own label — scoped to the sheet, since History has a
+/// same-labelled filter behind it.
+Future<void> selectKind(WidgetTester tester, String kind) async {
+  await tester.tap(
+    find.descendant(
+      of: find.byKey(const ValueKey('sheet-body')),
+      matching: find.text(kind),
+    ),
+  );
   await tester.pumpAndSettle();
 }
 
@@ -173,14 +195,19 @@ void main() {
 
     Rect rectOf(String key) => tester.getRect(find.byKey(ValueKey(key)));
     final sheet = rectOf('sheet-body');
-    final amount = rectOf('amount-display');
+    // The amount text's own width legitimately changes with the +/−/none
+    // sign, so pin its vertical position rather than its whole rect.
+    final amountTop = rectOf('amount-display').top;
     final firstKey = rectOf('key-1');
 
     for (final kind in ['Income', 'Transfer', 'Expense']) {
-      await tester.tap(find.widgetWithText(SegmentedButton<String>, kind));
-      await tester.pumpAndSettle();
+      await selectKind(tester, kind);
       expect(rectOf('sheet-body'), sheet, reason: 'sheet resized on $kind');
-      expect(rectOf('amount-display'), amount, reason: 'amount moved on $kind');
+      expect(
+        rectOf('amount-display').top,
+        amountTop,
+        reason: 'amount moved on $kind',
+      );
       expect(rectOf('key-1'), firstKey, reason: 'keypad moved on $kind');
     }
 
@@ -192,8 +219,7 @@ void main() {
     await openAddSheet(tester);
 
     for (final kind in ['Income', 'Transfer', 'Expense']) {
-      await tester.tap(find.widgetWithText(SegmentedButton<String>, kind));
-      await tester.pumpAndSettle();
+      await selectKind(tester, kind);
       expect(tester.takeException(), isNull, reason: 'overflow on $kind');
     }
 
@@ -304,6 +330,71 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.byKey(const ValueKey('category-filter-chip')), findsNothing);
     expect(find.text('food'), findsWidgets);
+
+    await tearDownTree(tester);
+  });
+
+  testWidgets('a transfer can target an account in another ledger', (
+    tester,
+  ) async {
+    final db = await pumpApp(
+      tester,
+      seed: (db) async {
+        final now = DateTime.now().toUtc();
+        await db
+            .into(db.ledgers)
+            .insert(
+              LedgersCompanion.insert(
+                id: 'ledger-invest',
+                name: 'Investments',
+                // Matches how the app assigns sortOrder (Value(count)). At
+                // the default 0 it would tie with Personal and win on name,
+                // becoming the auto-selected ledger.
+                sortOrder: const Value(1),
+                createdAt: now,
+                updatedAt: now,
+              ),
+            );
+        await db
+            .into(db.accounts)
+            .insert(
+              AccountsCompanion.insert(
+                id: 'acc-savings',
+                ledgerId: const Value('ledger-invest'),
+                name: 'Savings',
+                type: AccountType.bank,
+                currency: 'UGX',
+                createdAt: now,
+                updatedAt: now,
+              ),
+            );
+      },
+    );
+
+    await openAddSheet(tester);
+    await selectKind(tester, 'Transfer');
+
+    // Other ledgers appear below their own header, qualified by ledger name
+    // since account names repeat across ledgers.
+    expect(find.text('OTHER LEDGERS'), findsOneWidget);
+    final destination = find.text('Investments · Savings');
+    expect(destination, findsOneWidget);
+    await tester.ensureVisible(destination);
+    await tester.pumpAndSettle();
+    await tester.tap(destination);
+    await tester.pump();
+
+    await typeAmount(tester, '500000');
+    await tester.tap(find.byKey(const ValueKey('save-button')));
+    await tester.pumpAndSettle();
+
+    final txs = await tester.runAsync(() => db.select(db.transactions).get());
+    final tx = txs!.single;
+    expect(tx.kind, TxKind.transfer);
+    expect(tx.toAccountId, 'acc-savings');
+    expect(tx.amount, 500000);
+    // Recorded against the source account's ledger.
+    expect(tx.ledgerId, personalLedgerId);
 
     await tearDownTree(tester);
   });

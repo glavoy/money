@@ -224,16 +224,20 @@ class AppDatabase extends _$AppDatabase {
   // Accounts
   // ---------------------------------------------------------------------
 
+  /// Omit [ledgerId] to watch accounts across every ledger.
   Stream<List<Account>> watchAccounts({
-    required String ledgerId,
+    String? ledgerId,
     bool includeArchived = false,
   }) {
     final q = select(accounts)
-      ..where((a) => a.deleted.equals(false) & a.ledgerId.equals(ledgerId))
+      ..where((a) => a.deleted.equals(false))
       ..orderBy([
         (a) => OrderingTerm.asc(a.sortOrder),
         (a) => OrderingTerm.asc(a.name),
       ]);
+    if (ledgerId != null) {
+      q.where((a) => a.ledgerId.equals(ledgerId));
+    }
     if (!includeArchived) {
       q.where((a) => a.archived.equals(false));
     }
@@ -437,7 +441,20 @@ class AppDatabase extends _$AppDatabase {
         (t) => OrderingTerm.desc(t.date),
         (t) => OrderingTerm.desc(t.createdAt),
       ]);
-    if (ledgerId != null) q.where((t) => t.ledgerId.equals(ledgerId));
+    if (ledgerId != null) {
+      // A transaction belongs to a ledger if it was recorded there, or if a
+      // transfer from another ledger lands on one of its accounts. The
+      // source side needs no clause: ledgerId is set from the source
+      // account, so it is already covered by the first term.
+      final ledgerAccounts = selectOnly(accounts)
+        ..addColumns([accounts.id])
+        ..where(accounts.ledgerId.equals(ledgerId));
+      q.where(
+        (t) =>
+            t.ledgerId.equals(ledgerId) |
+            t.toAccountId.isInQuery(ledgerAccounts),
+      );
+    }
     if (limit != null) q.limit(limit);
     if (from != null) q.where((t) => t.date.isBiggerOrEqualValue(from));
     if (to != null) q.where((t) => t.date.isSmallerOrEqualValue(to));
