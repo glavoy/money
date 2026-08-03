@@ -122,4 +122,62 @@ void main() {
       await tearDownTree(tester);
     },
   );
+
+  testWidgets(
+    'History names both sides of a cross-ledger transfer, qualifying the '
+    'account in the other ledger with its ledger name',
+    (tester) async {
+      final db = await pumpApp(tester);
+      final now = DateTime.now().toUtc();
+
+      await db
+          .into(db.ledgers)
+          .insert(
+            LedgersCompanion.insert(
+              id: 'led-invest',
+              name: 'Investments',
+              // Not 0: that ties with Personal on sort order and wins on
+              // name, which would make Investments the selected ledger.
+              sortOrder: const Value(1),
+              createdAt: now,
+              updatedAt: now,
+            ),
+          );
+      await db
+          .into(db.accounts)
+          .insert(
+            AccountsCompanion.insert(
+              id: 'acc-uap',
+              ledgerId: const Value('led-invest'),
+              name: 'UAP',
+              type: AccountType.bank,
+              currency: 'UGX',
+              createdAt: now,
+              updatedAt: now,
+            ),
+          );
+      await db.upsertTransaction(
+        TransactionsCompanion.insert(
+          id: 'tx-cross-ledger',
+          ledgerId: const Value(personalLedgerId),
+          date: DateTime.utc(now.year, now.month, now.day),
+          kind: TxKind.transfer,
+          amount: 1250000,
+          accountId: 'acc-cash',
+          toAccountId: const Value('acc-uap'),
+          toAmount: const Value(1250000),
+          createdAt: now,
+          updatedAt: now,
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      // Regression: the destination lives outside the selected ledger, so
+      // resolving it from the current ledger's accounts rendered it as "?".
+      expect(find.text('Cash → Investments · UAP'), findsOneWidget);
+      expect(find.textContaining('?'), findsNothing);
+
+      await tearDownTree(tester);
+    },
+  );
 }

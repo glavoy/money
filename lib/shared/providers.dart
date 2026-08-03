@@ -17,6 +17,12 @@ final ledgersProvider = StreamProvider<List<Ledger>>((ref) {
   return ref.watch(databaseProvider).watchLedgers();
 });
 
+/// Includes archived ledgers — for resolving a ledger's *name* for display,
+/// which has to work even for a ledger the user has since archived.
+final allLedgersProvider = StreamProvider<List<Ledger>>((ref) {
+  return ref.watch(databaseProvider).watchLedgers(includeArchived: true);
+});
+
 /// Ledger whose accounts, categories, transactions, and reports are visible.
 class SelectedLedgerNotifier extends Notifier<String> {
   static const _key = 'selected_ledger_id';

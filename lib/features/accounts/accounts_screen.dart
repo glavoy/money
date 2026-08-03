@@ -191,10 +191,24 @@ class _AccountLedgerScreenState extends ConsumerState<AccountLedgerScreen> {
     final theme = Theme.of(context);
     final db = ref.watch(databaseProvider);
     final currency = CurrencyX.fromCode(account.currency);
-    final accounts = ref.watch(allAccountsProvider).value ?? [];
+    // Spans every ledger: the far side of a transfer on this account may
+    // live in another one, and would otherwise render as "?".
+    final accounts = ref.watch(everyLedgerAccountsProvider).value ?? [];
     final categories = ref.watch(allCategoriesProvider).value ?? [];
     final accountById = {for (final a in accounts) a.id: a};
     final categoryById = {for (final c in categories) c.id: c};
+    final ledgerNames = {
+      for (final l in ref.watch(allLedgersProvider).value ?? <Ledger>[])
+        l.id: l.name,
+    };
+    // Account names are only unique within a ledger, so a counterpart in a
+    // different ledger is qualified with it.
+    String label(Account? other) {
+      if (other == null) return '?';
+      if (other.ledgerId == account.ledgerId) return other.name;
+      final ledger = ledgerNames[other.ledgerId];
+      return ledger == null ? other.name : '$ledger · ${other.name}';
+    }
 
     return Scaffold(
       appBar: AppBar(
@@ -288,8 +302,8 @@ class _AccountLedgerScreenState extends ConsumerState<AccountLedgerScreen> {
                           final title = switch (t.kind) {
                             TxKind.transfer =>
                               t.accountId == account.id
-                                  ? 'To ${accountById[t.toAccountId]?.name ?? '?'}'
-                                  : 'From ${accountById[t.accountId]?.name ?? '?'}',
+                                  ? 'To ${label(accountById[t.toAccountId])}'
+                                  : 'From ${label(accountById[t.accountId])}',
                             _ => categoryById[t.categoryId]?.name ?? t.kind,
                           };
                           final amountText =
@@ -386,16 +400,17 @@ class _AccountLedgerScreenState extends ConsumerState<AccountLedgerScreen> {
     try {
       final db = ref.read(databaseProvider);
       final ledgers = await db.getLedgers(includeArchived: true);
-      final accounts = await db.getAccounts(
-        ledgerId: account.ledgerId,
-        includeArchived: true,
-      );
+      // Names only, so span every ledger — a transfer's counterpart account
+      // may sit outside this one and would otherwise export as a raw id.
+      final accounts = await db.getAccounts(includeArchived: true);
       final categories = await db.getCategories(
         ledgerId: account.ledgerId,
         includeArchived: true,
       );
+      // Scoped by account alone, matching the on-screen list: adding the
+      // ledger filter would silently drop transfers arriving from another
+      // ledger, so the CSV would not reconcile with the balance shown.
       final transactions = await db.getTransactionsForExport(
-        ledgerId: account.ledgerId,
         accountId: account.id,
       );
       final content = transactionsToCsv(

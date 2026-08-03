@@ -38,14 +38,20 @@ class _TransactionsScreenState extends ConsumerState<TransactionsScreen> {
     final db = ref.watch(databaseProvider);
     final ledgerId = ref.watch(selectedLedgerProvider);
     final accounts = ref.watch(accountsProvider).value ?? [];
-    final allAccounts = ref.watch(allAccountsProvider).value ?? [];
+    final everyAccount = ref.watch(everyLedgerAccountsProvider).value ?? [];
     final categories = ref.watch(allCategoriesProvider).value ?? [];
     final latestRate = ref.watch(latestRateProvider).value;
-    // Resolves each transaction's own account (including archived ones,
-    // e.g. imported-history buckets) so its true currency and name are
-    // shown correctly. `accounts` (non-archived) is used below only for
-    // the account filter picker.
-    final accountById = {for (final a in allAccounts) a.id: a};
+    final ledgerNames = {
+      for (final l in ref.watch(allLedgersProvider).value ?? <Ledger>[])
+        l.id: l.name,
+    };
+    // Resolves each transaction's own account so its true currency and name
+    // are shown correctly. This has to span every ledger, not just the
+    // selected one: archived accounts (imported-history buckets) live here,
+    // and a transfer showing in this ledger may have its other side in a
+    // different one. `accounts` (current ledger, non-archived) is used below
+    // only for the account filter picker.
+    final accountById = {for (final a in everyAccount) a.id: a};
     final categoryById = {for (final c in categories) c.id: c};
     final range = _effectiveRange();
 
@@ -287,6 +293,8 @@ class _TransactionsScreenState extends ConsumerState<TransactionsScreen> {
                             category: t.categoryId == null
                                 ? null
                                 : categoryById[t.categoryId],
+                            ledgerNames: ledgerNames,
+                            viewingLedgerId: ledgerId,
                           ),
                       ],
                     );
@@ -476,12 +484,26 @@ class _TransactionTile extends ConsumerWidget {
     required this.account,
     required this.toAccount,
     required this.category,
+    required this.ledgerNames,
+    required this.viewingLedgerId,
   });
 
   final Transaction tx;
   final Account? account;
   final Account? toAccount;
   final Category? category;
+  final Map<String, String> ledgerNames;
+  final String viewingLedgerId;
+
+  /// Account names are only unique within a ledger — there is a "Cash" in
+  /// more than one — so the far side of a cross-ledger transfer is qualified
+  /// with its ledger. Accounts in the ledger being viewed stay unqualified.
+  String _label(Account? a) {
+    if (a == null) return '?';
+    if (a.ledgerId == viewingLedgerId) return a.name;
+    final ledger = ledgerNames[a.ledgerId];
+    return ledger == null ? a.name : '$ledger · ${a.name}';
+  }
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -489,7 +511,7 @@ class _TransactionTile extends ConsumerWidget {
     final currency = CurrencyX.fromCode(account?.currency ?? 'UGX');
     final isTransfer = tx.kind == TxKind.transfer;
     final title = isTransfer
-        ? '${account?.name ?? '?'} → ${toAccount?.name ?? '?'}'
+        ? '${_label(account)} → ${_label(toAccount)}'
         : (category?.name ?? 'Uncategorised');
     final subtitleParts = [
       if (!isTransfer) account?.name,
