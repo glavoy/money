@@ -9,12 +9,28 @@ import '../../data/database.dart';
 const transactionsExportFileName = 'transactions.csv';
 const fxRatesExportFileName = 'fx_rates.csv';
 
+/// [accountsById] carries whole accounts rather than just names because
+/// account names are only unique within a ledger — there can be a "Cash" in
+/// several — so the destination's ledger has to be resolved for `to_ledger`.
 String transactionsToCsv(
   List<Transaction> transactions, {
   required Map<String, String> ledgerNames,
-  required Map<String, String> accountNames,
+  required Map<String, Account> accountsById,
   required Map<String, String> categoryNames,
 }) {
+  String? accountName(String? id) {
+    if (id == null) return null;
+    return accountsById[id]?.name ?? id;
+  }
+
+  // Null rather than the raw id when the account is missing: an unresolvable
+  // ledger is better left blank than filled with something that looks like a
+  // ledger name but is an account id.
+  String? accountLedger(String? id) {
+    final ledgerId = id == null ? null : accountsById[id]?.ledgerId;
+    return ledgerId == null ? null : ledgerNames[ledgerId] ?? ledgerId;
+  }
+
   final rows = <List<Object?>>[
     [
       'id',
@@ -25,6 +41,7 @@ String transactionsToCsv(
       'account',
       'category',
       'to_account',
+      'to_ledger',
       'to_amount',
       'note',
       'exclude_from_report',
@@ -36,13 +53,12 @@ String transactionsToCsv(
         _dateOnly(tx.date),
         tx.kind,
         tx.amount,
-        accountNames[tx.accountId] ?? tx.accountId,
+        accountName(tx.accountId),
         tx.categoryId == null
             ? null
             : categoryNames[tx.categoryId] ?? tx.categoryId,
-        tx.toAccountId == null
-            ? null
-            : accountNames[tx.toAccountId] ?? tx.toAccountId,
+        accountName(tx.toAccountId),
+        accountLedger(tx.toAccountId),
         tx.toAmount,
         tx.note,
         tx.excludeFromReport,
@@ -143,7 +159,7 @@ Future<Uint8List> buildFullExportZip(AppDatabase db) async {
   final fxRates = await db.getFxRatesForExport();
 
   final ledgerNames = {for (final l in ledgers) l.id: l.name};
-  final accountNames = {for (final a in accounts) a.id: a.name};
+  final accountsById = {for (final a in accounts) a.id: a};
   final categoryNames = {for (final c in categories) c.id: c.name};
 
   final archive = Archive()
@@ -166,7 +182,7 @@ Future<Uint8List> buildFullExportZip(AppDatabase db) async {
         transactionsToCsv(
           transactions,
           ledgerNames: ledgerNames,
-          accountNames: accountNames,
+          accountsById: accountsById,
           categoryNames: categoryNames,
         ),
       ),

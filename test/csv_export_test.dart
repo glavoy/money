@@ -54,7 +54,7 @@ void main() {
     final csv = transactionsToCsv(
       rows,
       ledgerNames: {for (final ledger in ledgers) ledger.id: ledger.name},
-      accountNames: {for (final account in accounts) account.id: account.name},
+      accountsById: {for (final account in accounts) account.id: account},
       categoryNames: {
         for (final category in categories) category.id: category.name,
       },
@@ -63,8 +63,8 @@ void main() {
     expect(
       csv,
       contains(
-        'id,ledger,date,kind,amount,account,category,to_account,to_amount,'
-        'note,exclude_from_report',
+        'id,ledger,date,kind,amount,account,category,to_account,to_ledger,'
+        'to_amount,note,exclude_from_report',
       ),
     );
     expect(
@@ -77,6 +77,69 @@ void main() {
     expect(csv, isNot(contains('cat-expense-food')));
     expect(csv, contains('"Lunch, with comma"'));
     expect(csv, isNot(contains('tx-other-ledger')));
+  });
+
+  test('to_ledger disambiguates a cross-ledger transfer whose destination '
+      'account shares its name with one in the source ledger', () async {
+    final now = DateTime.utc(2026, 8, 3);
+    await db
+        .into(db.ledgers)
+        .insert(
+          LedgersCompanion.insert(
+            id: 'ledger-invest',
+            name: 'Investments',
+            createdAt: now,
+            updatedAt: now,
+          ),
+        );
+    // Deliberately the same name as the seeded Personal account: names are
+    // only unique within a ledger, which is the whole reason to_ledger
+    // exists.
+    await db
+        .into(db.accounts)
+        .insert(
+          AccountsCompanion.insert(
+            id: 'acc-invest-cash',
+            ledgerId: const Value('ledger-invest'),
+            name: 'Cash',
+            type: AccountType.cash,
+            currency: 'UGX',
+            createdAt: now,
+            updatedAt: now,
+          ),
+        );
+    await db.upsertTransaction(
+      TransactionsCompanion.insert(
+        id: 'tx-cross',
+        ledgerId: const Value(personalLedgerId),
+        date: now,
+        kind: TxKind.transfer,
+        amount: 1250000,
+        accountId: 'acc-cash',
+        toAccountId: const Value('acc-invest-cash'),
+        toAmount: const Value(1250000),
+        createdAt: now,
+        updatedAt: now,
+      ),
+    );
+
+    final ledgers = await db.getLedgers(includeArchived: true);
+    final accounts = await db.getAccounts(includeArchived: true);
+    final csv = transactionsToCsv(
+      await db.getTransactionsForExport(),
+      ledgerNames: {for (final l in ledgers) l.id: l.name},
+      accountsById: {for (final a in accounts) a.id: a},
+      categoryNames: const {},
+    );
+
+    // Both sides read "Cash"; only the ledger columns tell them apart.
+    expect(
+      csv,
+      contains(
+        'tx-cross,Personal,2026-08-03,transfer,1250000.0,Cash,,Cash,'
+        'Investments,1250000.0',
+      ),
+    );
   });
 
   test('exports active fx rates', () async {

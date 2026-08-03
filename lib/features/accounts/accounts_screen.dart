@@ -416,7 +416,7 @@ class _AccountLedgerScreenState extends ConsumerState<AccountLedgerScreen> {
       final content = transactionsToCsv(
         transactions,
         ledgerNames: {for (final l in ledgers) l.id: l.name},
-        accountNames: {for (final a in accounts) a.id: a.name},
+        accountsById: {for (final a in accounts) a.id: a},
         categoryNames: {for (final c in categories) c.id: c.name},
       );
       final fileName = '${_sanitizeFileName(account.name)}_transactions.csv';

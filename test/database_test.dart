@@ -226,6 +226,14 @@ void main() {
           .watchTransactions(accountId: 'acc-savings')
           .first;
       expect(byAccount.map((t) => t.id), contains('tx-cross'));
+
+      // The per-account CSV download runs through here. Scoping it by ledger
+      // as well would drop this inbound transfer, leaving the file unable to
+      // reconcile with the balance shown above it on the same screen.
+      final forExport = await db.getTransactionsForExport(
+        accountId: 'acc-savings',
+      );
+      expect(forExport.map((t) => t.id), contains('tx-cross'));
     });
 
     test('sync mappers move empty ledger setup between databases', () async {
