@@ -146,12 +146,10 @@ handle CSV round-tripping of transactions. `tools/import_xlsx.py` is a
 standalone (non-Flutter) helper for converting spreadsheet exports to the
 CSV shape the app expects — run it manually outside the Flutter toolchain.
 
-`tools/backup_supabase.py` is likewise standalone (stdlib only) and dumps
-every row of the five synced tables from Supabase to a timestamped folder,
-alongside a copy of `supabase/`. It signs in with the user's own account —
-RLS grants `authenticated` full access — and verifies each table against a
-server-side `count=exact`, failing loudly rather than writing a silently
-truncated backup. Backups go outside the repo; never commit one.
+Backing up the Supabase project is handled by a script kept outside this
+repo, so it survives losing the repo. It reads `supabase/money.json` and
+`supabase/schema.sql`, so keep the copies it holds in step when the remote
+schema changes.
 
 ## Conventions
 
