@@ -38,11 +38,22 @@ import urllib.request
 from datetime import datetime, timezone
 from pathlib import Path
 
-REPO_ROOT = Path(__file__).resolve().parent.parent
-CONFIG_PATH = REPO_ROOT / "config" / "sync_config.json"
-SCHEMA_DIR = REPO_ROOT / "supabase"
-SCHEMA_JSON = SCHEMA_DIR / "money.json"
-SCHEMA_SQL = SCHEMA_DIR / "schema.sql"
+SCRIPT_DIR = Path(__file__).resolve().parent
+REPO_ROOT = SCRIPT_DIR.parent
+
+# Searched in order, so the script works both inside the app repo and on its
+# own in a backup folder with the config and schema files sitting beside it.
+CONFIG_CANDIDATES = [
+    SCRIPT_DIR / "sync_config.json",
+    REPO_ROOT / "config" / "sync_config.json",
+]
+SCHEMA_DIR_CANDIDATES = [
+    SCRIPT_DIR,
+    SCRIPT_DIR / "supabase",
+    REPO_ROOT / "supabase",
+]
+SCHEMA_JSON_NAME = "money.json"
+SCHEMA_SQL_NAME = "schema.sql"
 
 # Order matters: ledgers before the rows that reference them, so a human
 # reading the backup meets the parents first. Every table is fetched in full.
@@ -56,21 +67,46 @@ class BackupError(Exception):
     """Anything that should stop the backup with a readable message."""
 
 
-def load_config() -> tuple[str, str]:
+def find_config(explicit: str | None) -> Path | None:
+    if explicit:
+        path = Path(explicit).expanduser()
+        if not path.exists():
+            raise BackupError(f"No config file at {path}.")
+        return path
+    return next((p for p in CONFIG_CANDIDATES if p.exists()), None)
+
+
+def load_config(explicit: str | None) -> tuple[str, str]:
     url = os.environ.get("SUPABASE_URL")
     key = os.environ.get("SUPABASE_PUBLISHABLE_KEY")
     if url and key:
         return url.rstrip("/"), key
-    if not CONFIG_PATH.exists():
+    path = find_config(explicit)
+    if path is None:
+        searched = "\n  ".join(str(p) for p in CONFIG_CANDIDATES)
         raise BackupError(
-            f"No {CONFIG_PATH} and no SUPABASE_URL/SUPABASE_PUBLISHABLE_KEY "
-            "in the environment."
+            "Could not find sync_config.json. Looked in:\n  "
+            f"{searched}\nPass --config, or set SUPABASE_URL and "
+            "SUPABASE_PUBLISHABLE_KEY in the environment."
         )
-    data = json.loads(CONFIG_PATH.read_text())
+    data = json.loads(path.read_text())
     try:
         return data["SUPABASE_URL"].rstrip("/"), data["SUPABASE_PUBLISHABLE_KEY"]
     except KeyError as exc:
-        raise BackupError(f"{CONFIG_PATH} is missing {exc}.") from exc
+        raise BackupError(f"{path} is missing {exc}.") from exc
+
+
+def find_schema_dir(explicit: str | None) -> Path | None:
+    """Directory holding money.json / schema.sql, if one can be found."""
+    if explicit:
+        path = Path(explicit).expanduser()
+        if not path.is_dir():
+            raise BackupError(f"No schema directory at {path}.")
+        return path
+    return next(
+        (p for p in SCHEMA_DIR_CANDIDATES if (p / SCHEMA_JSON_NAME).exists()),
+        None,
+    )
 
 
 def request(
@@ -149,16 +185,19 @@ def fetch_table(base_url: str, headers: dict[str, str], table: str) -> list[dict
     return rows
 
 
-def schema_columns() -> dict[str, list[str]]:
+def schema_columns(schema_dir: Path | None) -> dict[str, list[str]]:
     """Canonical column order per table, taken from the schema snapshot.
 
     Deriving CSV headers from the schema rather than from the first row keeps
     every column present even when the rows that happen to come back all have
     a null there.
     """
-    if not SCHEMA_JSON.exists():
+    if schema_dir is None:
         return {}
-    doc = json.loads(SCHEMA_JSON.read_text())
+    path = schema_dir / SCHEMA_JSON_NAME
+    if not path.exists():
+        return {}
+    doc = json.loads(path.read_text())
     tables = doc[0]["project_schema"]["tables"] if isinstance(doc, list) else []
     return {
         t["table_name"]: [c["column"] for c in t["columns"]] for t in tables
@@ -183,8 +222,22 @@ def write_csv(path: Path, rows: list[dict], columns: list[str]) -> None:
             writer.writerow({c: csv_value(row.get(c)) for c in columns})
 
 
-def run_backup(out_root: Path, email: str, password: str) -> Path:
-    base_url, key = load_config()
+def run_backup(
+    out_root: Path,
+    email: str,
+    password: str,
+    config_path: str | None = None,
+    schema_dir_path: str | None = None,
+) -> Path:
+    base_url, key = load_config(config_path)
+    schema_dir = find_schema_dir(schema_dir_path)
+    if schema_dir is None:
+        print(
+            "Note: no money.json found, so CSV columns are derived from the "
+            "returned rows.\n      The JSON files are unaffected. Keep a copy "
+            "of the app's supabase/ folder\n      beside this script to "
+            "restore full column ordering.\n"
+        )
     token = sign_in(base_url, key, email, password)
     headers = {"apikey": key, "Authorization": f"Bearer {token}"}
 
@@ -193,7 +246,7 @@ def run_backup(out_root: Path, email: str, password: str) -> Path:
     data_dir = dest / "data"
     data_dir.mkdir(parents=True)
 
-    columns_by_table = schema_columns()
+    columns_by_table = schema_columns(schema_dir)
     manifest_tables: dict[str, dict] = {}
     mismatches: list[str] = []
 
@@ -229,11 +282,13 @@ def run_backup(out_root: Path, email: str, password: str) -> Path:
         status = "ok" if complete else "MISMATCH"
         print(f"  {table:<14} {len(rows):>7} rows  [{status}]")
 
-    schema_dir = dest / "schema"
-    schema_dir.mkdir()
-    for src in (SCHEMA_JSON, SCHEMA_SQL):
-        if src.exists():
-            shutil.copy2(src, schema_dir / src.name)
+    if schema_dir is not None:
+        schema_out = dest / "schema"
+        schema_out.mkdir()
+        for name in (SCHEMA_JSON_NAME, SCHEMA_SQL_NAME):
+            src = schema_dir / name
+            if src.exists():
+                shutil.copy2(src, schema_out / name)
 
     manifest = {
         "created_at": datetime.now(timezone.utc).isoformat(),
@@ -276,6 +331,17 @@ def main() -> int:
         default=os.environ.get("SUPABASE_EMAIL"),
         help="Supabase account email (or set SUPABASE_EMAIL).",
     )
+    parser.add_argument(
+        "--config",
+        help="Path to sync_config.json. Defaults to one beside this script, "
+        "then the app repo's config/sync_config.json.",
+    )
+    parser.add_argument(
+        "--schema-dir",
+        help="Folder holding money.json and schema.sql, copied into each "
+        "backup. Defaults to one beside this script, then the app repo's "
+        "supabase/.",
+    )
     args = parser.parse_args()
 
     email = args.email or input("Supabase email: ").strip()
@@ -292,7 +358,9 @@ def main() -> int:
     out_root.mkdir(parents=True, exist_ok=True)
 
     try:
-        dest = run_backup(out_root, email, password)
+        dest = run_backup(
+            out_root, email, password, args.config, args.schema_dir
+        )
     except BackupError as exc:
         print(f"\nBackup failed: {exc}", file=sys.stderr)
         return 1
