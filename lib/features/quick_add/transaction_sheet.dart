@@ -411,7 +411,10 @@ class _TransactionSheetState extends ConsumerState<_TransactionSheet> {
       final from = accounts.firstWhere((a) => a.id == _accountId);
       final to = accounts.firstWhere((a) => a.id == _toAccountId);
       if (from.currency == to.currency) {
-        toAmount = double.tryParse(_toAmountText) ?? amount;
+        // There is no separate received-amount field for a same-currency
+        // transfer. On edit, carrying forward its old hidden value would let
+        // the source and destination sides diverge.
+        toAmount = amount;
       } else {
         toAmount = double.tryParse(_toAmountText);
         if (toAmount == null || toAmount <= 0) {

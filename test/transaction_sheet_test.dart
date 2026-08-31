@@ -75,6 +75,103 @@ Future<void> typeAmount(WidgetTester tester, String digits) async {
 }
 
 void main() {
+  testWidgets('editing a same-currency transfer updates its receiving amount', (
+    tester,
+  ) async {
+    final now = DateTime.now().toUtc();
+    final db = await pumpApp(
+      tester,
+      seed: (db) => db.upsertTransaction(
+        TransactionsCompanion.insert(
+          id: 'same-currency-transfer-edit',
+          ledgerId: const Value(personalLedgerId),
+          date: now,
+          kind: TxKind.transfer,
+          amount: 1000000,
+          accountId: 'acc-cash',
+          toAccountId: const Value('acc-stanbic'),
+          toAmount: const Value(1000000),
+          createdAt: now,
+          updatedAt: now,
+        ),
+      ),
+    );
+
+    await tester.tap(find.text('Cash → Stanbic Bank'));
+    await tester.pumpAndSettle();
+    for (var i = 0; i < 7; i++) {
+      await tester.tap(find.byKey(const ValueKey('key-⌫')));
+      await tester.pump();
+    }
+    await typeAmount(tester, '2000000');
+    await tester.tap(find.byKey(const ValueKey('save-button')));
+    await tester.pumpAndSettle();
+
+    final tx = await tester.runAsync(
+      () => (db.select(db.transactions)
+            ..where((t) => t.id.equals('same-currency-transfer-edit')))
+          .getSingle(),
+    );
+    expect(tx!.amount, 2000000);
+    expect(tx.toAmount, 2000000);
+
+    await tearDownTree(tester);
+  });
+
+  testWidgets('Accounts refreshes both transfer balances after an update', (
+    tester,
+  ) async {
+    final now = DateTime.now().toUtc();
+    final db = await pumpApp(
+      tester,
+      seed: (db) => db.upsertTransaction(
+        TransactionsCompanion.insert(
+          id: 'transfer-account-refresh',
+          ledgerId: const Value(personalLedgerId),
+          date: DateTime.utc(2026, 8, 1),
+          kind: TxKind.transfer,
+          amount: 100,
+          accountId: 'acc-usd-bank',
+          toAccountId: const Value('acc-cash'),
+          toAmount: const Value(360000),
+          createdAt: now,
+          updatedAt: now,
+        ),
+      ),
+    );
+
+    await tester.tap(find.text('Accounts'));
+    await tester.pumpAndSettle();
+    expect(find.textContaining('360,000 UGX'), findsNWidgets(2));
+    expect(find.textContaining('100.00 USD'), findsOneWidget);
+
+    // This is the write made when the edit sheet saves the same transaction.
+    await tester.runAsync(() async {
+      await db.upsertTransaction(
+        TransactionsCompanion.insert(
+          id: 'transfer-account-refresh',
+          ledgerId: const Value(personalLedgerId),
+          date: DateTime.utc(2026, 8, 1),
+          kind: TxKind.transfer,
+          amount: 125,
+          accountId: 'acc-usd-bank',
+          toAccountId: const Value('acc-cash'),
+          toAmount: const Value(450000),
+          createdAt: now,
+          updatedAt: now,
+        ),
+      );
+      await Future<void>.delayed(Duration.zero);
+    });
+    await tester.pumpAndSettle();
+
+    expect(find.textContaining('450,000 UGX'), findsNWidgets(2));
+    expect(find.textContaining('125.00 USD'), findsOneWidget);
+    expect(find.textContaining('360,000 UGX'), findsNothing);
+
+    await tearDownTree(tester);
+  });
+
   testWidgets('add an expense through the entry sheet', (tester) async {
     final db = await pumpApp(tester);
     await openAddSheet(tester);

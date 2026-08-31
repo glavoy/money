@@ -372,6 +372,45 @@ void main() {
   });
 
   group('balances', () {
+    test('updating a transfer replaces effects on both accounts', () async {
+      final db = _openTestDb();
+      addTearDown(db.close);
+      final day = DateTime.utc(2026, 7, 1);
+
+      await db.upsertTransaction(
+        _tx(
+          id: 'transfer-to-edit',
+          date: day,
+          kind: TxKind.transfer,
+          amount: 100,
+          accountId: 'acc-usd-bank',
+          toAccountId: 'acc-cash',
+          toAmount: 360000,
+        ),
+      );
+
+      // Saving an edit uses the same id, so this must replace—not add to—the
+      // previous debit and credit.
+      await db.upsertTransaction(
+        _tx(
+          id: 'transfer-to-edit',
+          date: day,
+          kind: TxKind.transfer,
+          amount: 125,
+          accountId: 'acc-usd-bank',
+          toAccountId: 'acc-cash',
+          toAmount: 450000,
+        ),
+      );
+
+      final balances = await db
+          .watchBalances(ledgerId: personalLedgerId, includeArchived: true)
+          .first;
+      final byId = {for (final b in balances) b.account.id: b.balance};
+      expect(byId['acc-usd-bank'], -125);
+      expect(byId['acc-cash'], 450000);
+    });
+
     test('computes opening + income - expense + transfers', () async {
       final db = _openTestDb();
       addTearDown(db.close);
