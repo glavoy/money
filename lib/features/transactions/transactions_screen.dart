@@ -214,6 +214,28 @@ class _TransactionsScreenState extends ConsumerState<TransactionsScreen> {
                     ),
                   );
                 }
+                // Amounts that can't be converted (no FX rate covers that
+                // currency) are left out of the total rather than added in
+                // raw and mislabelled as UGX, which would silently fabricate
+                // a wrong figure.
+                double totalUgx = 0;
+                var missingRateCount = 0;
+                for (final t in txs) {
+                  final c = CurrencyX.fromCode(
+                    accountById[t.accountId]?.currency ?? 'UGX',
+                  );
+                  final converted = convertWithRate(
+                    t.amount,
+                    c,
+                    Currency.ugx,
+                    latestRate,
+                  );
+                  if (converted == null) {
+                    missingRateCount++;
+                  } else {
+                    totalUgx += converted;
+                  }
+                }
                 // Group by day.
                 final groups = <DateTime, List<Transaction>>{};
                 for (final t in txs) {
@@ -226,79 +248,134 @@ class _TransactionsScreenState extends ConsumerState<TransactionsScreen> {
                 }
                 final days = groups.keys.toList()
                   ..sort((a, b) => b.compareTo(a));
-                return ListView.builder(
-                  // Clears the add-transaction FAB.
-                  padding: const EdgeInsets.only(bottom: 88),
-                  itemCount: days.length + (_canLoadOlder ? 1 : 0),
-                  itemBuilder: (context, i) {
-                    if (i == days.length) {
-                      return Padding(
-                        padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
-                        child: OutlinedButton.icon(
-                          onPressed: _loadOlder,
-                          icon: const Icon(Icons.history),
-                          label: const Text('Load older'),
-                        ),
-                      );
-                    }
-                    final day = days[i];
-                    final dayTxs = groups[day]!;
-                    double spentUgx = 0;
-                    for (final t in dayTxs.where(
-                      (t) => t.kind == TxKind.expense,
-                    )) {
-                      final c = CurrencyX.fromCode(
-                        accountById[t.accountId]?.currency ?? 'UGX',
-                      );
-                      spentUgx +=
-                          convertWithRate(
-                            t.amount,
-                            c,
-                            Currency.ugx,
-                            latestRate,
-                          ) ??
-                          t.amount;
-                    }
-                    return Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Padding(
-                          padding: const EdgeInsets.fromLTRB(16, 14, 16, 2),
-                          child: Row(
-                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                            children: [
-                              Text(
-                                _dayLabel(day),
+                return Column(
+                  children: [
+                    Padding(
+                      padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+                      child: Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          Flexible(
+                            child: Text(
+                              '${txs.length} transaction${txs.length == 1 ? '' : 's'}',
+                              overflow: TextOverflow.ellipsis,
+                              style: theme.textTheme.bodySmall?.copyWith(
+                                color: theme.colorScheme.onSurfaceVariant,
+                              ),
+                            ),
+                          ),
+                          const SizedBox(width: 8),
+                          Flexible(
+                            child: Tooltip(
+                              message: missingRateCount == 0
+                                  ? ''
+                                  : '$missingRateCount transaction${missingRateCount == 1 ? '' : 's'} left out — no FX rate to convert to UGX',
+                              child: Text(
+                                'Total ${formatMoney(totalUgx, Currency.ugx)}'
+                                '${missingRateCount == 0 ? '' : '*'}',
+                                overflow: TextOverflow.ellipsis,
+                                textAlign: TextAlign.right,
                                 style: theme.textTheme.titleSmall?.copyWith(
-                                  color: theme.colorScheme.primary,
+                                  fontWeight: FontWeight.w600,
                                 ),
                               ),
-                              if (spentUgx > 0)
-                                Text(
-                                  formatMoney(spentUgx, Currency.ugx),
-                                  style: theme.textTheme.labelLarge?.copyWith(
-                                    color: theme.colorScheme.onSurfaceVariant,
-                                  ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    Expanded(
+                      child: ListView.builder(
+                        // Clears the add-transaction FAB.
+                        padding: const EdgeInsets.only(bottom: 88),
+                        itemCount: days.length + (_canLoadOlder ? 1 : 0),
+                        itemBuilder: (context, i) {
+                          if (i == days.length) {
+                            return Padding(
+                              padding: const EdgeInsets.fromLTRB(
+                                16,
+                                12,
+                                16,
+                                24,
+                              ),
+                              child: OutlinedButton.icon(
+                                onPressed: _loadOlder,
+                                icon: const Icon(Icons.history),
+                                label: const Text('Load older'),
+                              ),
+                            );
+                          }
+                          final day = days[i];
+                          final dayTxs = groups[day]!;
+                          double spentUgx = 0;
+                          for (final t in dayTxs.where(
+                            (t) => t.kind == TxKind.expense,
+                          )) {
+                            final c = CurrencyX.fromCode(
+                              accountById[t.accountId]?.currency ?? 'UGX',
+                            );
+                            spentUgx +=
+                                convertWithRate(
+                                  t.amount,
+                                  c,
+                                  Currency.ugx,
+                                  latestRate,
+                                ) ??
+                                t.amount;
+                          }
+                          return Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Padding(
+                                padding: const EdgeInsets.fromLTRB(
+                                  16,
+                                  14,
+                                  16,
+                                  2,
+                                ),
+                                child: Row(
+                                  mainAxisAlignment:
+                                      MainAxisAlignment.spaceBetween,
+                                  children: [
+                                    Text(
+                                      _dayLabel(day),
+                                      style: theme.textTheme.titleSmall
+                                          ?.copyWith(
+                                            color: theme.colorScheme.primary,
+                                          ),
+                                    ),
+                                    if (spentUgx > 0)
+                                      Text(
+                                        formatMoney(spentUgx, Currency.ugx),
+                                        style: theme.textTheme.labelLarge
+                                            ?.copyWith(
+                                              color: theme
+                                                  .colorScheme
+                                                  .onSurfaceVariant,
+                                            ),
+                                      ),
+                                  ],
+                                ),
+                              ),
+                              for (final t in dayTxs)
+                                _TransactionTile(
+                                  tx: t,
+                                  account: accountById[t.accountId],
+                                  toAccount: t.toAccountId == null
+                                      ? null
+                                      : accountById[t.toAccountId],
+                                  category: t.categoryId == null
+                                      ? null
+                                      : categoryById[t.categoryId],
+                                  ledgerNames: ledgerNames,
+                                  viewingLedgerId: ledgerId,
                                 ),
                             ],
-                          ),
-                        ),
-                        for (final t in dayTxs)
-                          _TransactionTile(
-                            tx: t,
-                            account: accountById[t.accountId],
-                            toAccount: t.toAccountId == null
-                                ? null
-                                : accountById[t.toAccountId],
-                            category: t.categoryId == null
-                                ? null
-                                : categoryById[t.categoryId],
-                            ledgerNames: ledgerNames,
-                            viewingLedgerId: ledgerId,
-                          ),
-                      ],
-                    );
-                  },
+                          );
+                        },
+                      ),
+                    ),
+                  ],
                 );
               },
             ),
