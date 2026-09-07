@@ -258,6 +258,66 @@ void main() {
     await tearDownTree(tester);
   });
 
+  testWidgets(
+    'editing a transaction keeps its category selected after it was archived',
+    (tester) async {
+      final now = DateTime.now().toUtc();
+      final db = await pumpApp(
+        tester,
+        seed: (db) async {
+          await db.upsertTransaction(
+            TransactionsCompanion.insert(
+              id: 'archived-category-edit',
+              ledgerId: const Value(personalLedgerId),
+              date: now,
+              kind: TxKind.expense,
+              amount: 3000,
+              accountId: 'acc-cash',
+              categoryId: const Value('cat-expense-food'),
+              createdAt: now,
+              updatedAt: now,
+            ),
+          );
+          await (db.update(db.categories)
+                ..where((c) => c.id.equals('cat-expense-food')))
+              .write(
+                CategoriesCompanion(
+                  archived: const Value(true),
+                  updatedAt: Value(now),
+                ),
+              );
+        },
+      );
+
+      await tester.tap(find.text('food'));
+      await tester.pumpAndSettle();
+
+      // Change the amount without touching the category grid. If the
+      // now-archived category got silently cleared, saving is blocked
+      // entirely (a "Pick a category" toast, no write) even though the
+      // category was never actually unset by the user.
+      for (var i = 0; i < 4; i++) {
+        await tester.tap(find.byKey(const ValueKey('key-⌫')));
+        await tester.pump();
+      }
+      await typeAmount(tester, '5000');
+      await tester.tap(find.byKey(const ValueKey('save-button')));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Pick a category'), findsNothing);
+
+      final tx = await tester.runAsync(
+        () => (db.select(db.transactions)
+              ..where((t) => t.id.equals('archived-category-edit')))
+            .getSingle(),
+      );
+      expect(tx!.amount, 5000);
+      expect(tx.categoryId, 'cat-expense-food');
+
+      await tearDownTree(tester);
+    },
+  );
+
   testWidgets('a whole expense fits a small phone without scrolling', (
     tester,
   ) async {

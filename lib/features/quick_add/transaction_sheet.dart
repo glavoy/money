@@ -480,7 +480,7 @@ class _TransactionSheetState extends ConsumerState<_TransactionSheet> {
     final pickable = ref.watch(accountsProvider).value ?? [];
     final ledgers = ref.watch(ledgersProvider).value ?? const <Ledger>[];
     final ledgerNames = <String, String>{for (final l in ledgers) l.id: l.name};
-    final categories =
+    final loadedCategories =
         ref
             .watch(
               _kind == TxKind.income
@@ -489,6 +489,23 @@ class _TransactionSheetState extends ConsumerState<_TransactionSheet> {
             )
             .value ??
         [];
+    // An edited transaction's category may since have been archived, which
+    // drops it from the list above. Splice it back in (from the archived-
+    // inclusive provider) so editing that transaction still shows it
+    // selected, rather than looking like the category was cleared.
+    final archivedSelected = _categoryId == null
+        ? null
+        : (ref.watch(allCategoriesProvider).value ?? [])
+              .where(
+                (c) =>
+                    c.id == _categoryId &&
+                    c.archived &&
+                    !loadedCategories.any((l) => l.id == c.id),
+              )
+              .firstOrNull;
+    final categories = archivedSelected == null
+        ? loadedCategories
+        : [...loadedCategories, archivedSelected];
 
     // Seed the account the way Quick Add used to: last used, else the first.
     // Only once accounts have actually loaded — the providers are empty for
@@ -500,7 +517,13 @@ class _TransactionSheetState extends ConsumerState<_TransactionSheet> {
           ? lastAccountId
           : (pickable.isNotEmpty ? pickable.first.id : null);
     }
-    if (_categoryId != null && !categories.any((c) => c.id == _categoryId)) {
+    // As with the account seeding above, the categories provider is empty for
+    // the first frame or two while its stream loads — only treat a category
+    // as gone once the list has actually loaded, otherwise this wipes a
+    // perfectly valid selection out from under an edit.
+    if (_categoryId != null &&
+        categories.isNotEmpty &&
+        !categories.any((c) => c.id == _categoryId)) {
       _categoryId = null;
     }
 
